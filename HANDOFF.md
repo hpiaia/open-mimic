@@ -33,12 +33,17 @@ files into `/mnt/user/instruments/`).
   `mimic_storage` containers, **zlib + CRC32C, no signature**. `.mos` runs an embedded
   string via `system(3)` → a root/shell path on-device without opening the case.
 - **Instrument library format cracked & byte-exact round-trippable.** See §5.
-- **Audio codec understood.** See §6. Key: a **32-bit-float = uncompressed** decoder
-  path exists, likely lets an authoring tool skip the codec.
-- **Multi-mic is baked into the format AND the Editor's serializer.** Whether the
-  Editor has a *hidden UI* to author it is unresolved and needs a GUI test. See §7.
-- **NOT done yet:** imaging the real SSD / any on-device validation. This is the
-  gating step for proving any generated instrument actually loads. See §8.
+- **Installed-instrument audio codec implemented.** The verified 1024-byte signed
+  delta codec exists in Python and Rust. See §6.
+- **Multi-mic is baked into the format AND the Editor's serializer.** Static analysis
+  now rules out a hidden multi-mic authoring UI in r106: the saved project model has
+  no independent mic collection and export derives its record count from
+  `articulations_count`. See §7 and
+  `docs/research/instrument-editor-r106-analysis.md`.
+- **Hardware validation succeeded.** A newly encoded six-channel multi-mic kick
+  imported and played all close/OH/room signals correctly without crashing.
+- **Rust compiler implemented for Tauri.** See `compiler/` and
+  `examples/multimic-kick.json`.
 
 ---
 
@@ -128,48 +133,51 @@ Full spec in `docs/research/instrument-format.md`. Essentials:
 - Firmware decoder path: `CDiskStreamer::doDecomp` / `doDecomp_wave` →
   `CDataCompression::DecopressRIFFDataToFloat` / `testDecompress1024Bytes` (768/1024-B
   blocks → float32).
-- **Key finding for authoring:** `DecopressRIFFDataToFloat` branches on a bit-depth
-  value (16/24/32); **bit-depth 32 = a straight float32 word copy (uncompressed).**
-  So an authoring tool can likely store float32 audio + declare bit-depth 32 and skip
-  the block codec entirely. Open: locate the per-chunk bit-depth field (chunk header
-  is `[u32 a][u32 b][0,0,0,flag]`, flag ∈ {0,3}) and validate on-device.
+- The installed-instrument path uses verified 1024-byte delta blocks: a signed
+  24-bit predictor and residual width in word 0, decoded count in word 1, then
+  MSB-first signed deltas. `tools/drd_codec.py` and `compiler/src/codec.rs`
+  implement it.
+- A newly encoded six-channel instrument was validated successfully on real Mimic
+  hardware: two mono close channels, stereo OH, and stereo room all played correctly.
 
 ---
 
-## 7. The Editor multi-mic question (needs a GUI test)
+## 7. The Editor multi-mic question (resolved: no authoring UI)
 
-- The Editor's **serializer + data model fully support multi-mic** (all `micinf*` keys
-  present; full mic vocabulary: `[Mic_Direct_Mono_Name]`, `[Mic_Bleed_Stereo_Name]`,
+- The Editor's **export serializer supports multi-mic records** (all `micinf*` keys
+  present; full dormant vocabulary: `[Mic_Direct_Mono_Name]`, `[Mic_Bleed_Stereo_Name]`,
   positions Top/Bottom/Front/Back/Inside/Overhead/Room, `[Mic_Volume]`,
   `[Mic_Pan(0.5_is_center)]`, plus `[Enable_envelope_modeling]`).
 - The documented UI workflow (help text steps 1–11) has **no mic step** (one WAV per
   velocity/round-robin cell). "Show advanced settings…" turned out to be JUCE
   **audio-device** options (a red herring), not mic authoring.
-- The mic label strings look like **live UI field labels** but have no direct string
-  xref (same as the format keys, which are reached via index tables) — so static
-  analysis can't confirm/deny a hidden mic panel.
-- **DECISIVE TEST (owner, in the running Editor):** try right-click/double-click on a
-  sample cell; select different **instrument types** at New Project (a "Kick" type may
-  instantiate its 4 mic slots); explore all cog-wheel menu items; look for
-  envelope/mic controls. Report what appears.
+- Follow-up analysis with Ghidra 12.1.2 + GhidraMCP scanned all 10,487 functions.
+  The saved `MimicInstPrj` serializer writes articulations, layer dimensions, WAV
+  paths, names/type/image, but **no microphone metadata**. All accesses to the
+  exported mic-record region belong to construction/destruction, import/export, or
+  project-to-export conversion; no JUCE UI constructor/callback/layout code touches
+  it. Export copies `articulations_count` directly into the output record count.
+- The bracketed mic label strings have no consumers even when references,
+  instruction operands, and decompiler P-code constants are scanned across the
+  whole program. They are dormant/legacy format vocabulary, not evidence of a live
+  panel.
+- Detailed addresses and reproduction scripts:
+  `docs/research/instrument-editor-r106-analysis.md`.
 - **Reproduce the Editor RE** (headless Ghidra): install JDK + Ghidra (see §9), import
-  `MIE.exe`, run the Java scripts in scratch (`FindMic.java`, `FindAdv.java`,
-  `AdvGated.java`, `FullDec.java`) — these locate mic strings, the advanced-flag
-  callers, and decompile candidates. Rewrite as needed; Ghidra 12 needs **Java**
-  scripts (Python needs PyGhidra).
+  `MIE.exe`, and run the Java scripts in `tools/ghidra/`. Ghidra 12 needs **Java**
+  scripts unless PyGhidra is set up.
 
 ---
 
-## 8. THE gating real-world step (not started)
+## 8. Hardware validation (compiler path complete)
 
-Nothing generated can be *validated* without the device. Path:
+The custom multi-mic compiler path has been validated on the user's device. Separate
+firmware/hardware research can still use this path:
 1. Pull the mSATA (removable, clones cleanly per the VDrums thread) and **image it
    read-only** (`ddrescue`), OR use the `.mos` `system()` payload to get a shell and
    dump the rootfs. Keep the stock HooDisk as golden master.
 2. From the image: confirm SoC (`/proc/cpuinfo`), partition→mount map, kernel/DTB,
    custom drivers, and where `/mnt/user/instruments/` lives.
-3. Build a hand-crafted multi-mic instrument (32-bit-uncompressed `.drd` + `.bin` +
-   `.kit` + `checksum.dat`) and test-load it. That closes the loop on the compiler.
 
 ---
 
@@ -193,17 +201,10 @@ Nothing generated can be *validated* without the device. Path:
 
 ## 10. Prioritized next steps
 
-1. **(Owner) GUI test of the Editor** for a hidden mic panel (§7). Cheapest possible
-   path to the goal — if a mic UI exists, no build needed.
-2. **Build the multi-mic compiler** (guaranteed path): WAVs + mic layout → valid
-   `.bin`/`.drd`(32-bit uncompressed)/`.kit`/`checksum.dat`. Foundation already exists
-   in `mimic_lib.py` (round-trip) + `mimic_kv.py` (checksum). Remaining unknowns:
-   per-chunk bit-depth field; `.drd` chunk header `[a][b][0,0,0,flag]` semantics.
-3. **Image the SSD** and validate a hand-built instrument on the device (§8).
-4. If uncompressed path is rejected, black-box the 16/24-bit block codec:
-   `python3 tools/gen_test_vectors.py`, import each WAV in the Editor, then
-   `tools/drd_probe.py --diff <libA> <libB>`; and/or finish disassembling
-   `DecopressRIFFDataToFloat` + `CDataCompression::testCompress`.
+1. Integrate the Rust crate in the Tauri UI (`compiler/README.md`).
+2. Add template coverage for snares, toms, cymbals, hats, and multiple articulations.
+3. Add kit compilation and a friendly template-selection layer.
+4. Image the SSD only if resuming the separate firmware/hardware goal.
 
 ---
 

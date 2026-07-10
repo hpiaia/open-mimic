@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import struct
 import sys
@@ -43,6 +44,8 @@ class MimicStorage:
     version: int
     expected_size: int
     payload: bytes
+    compressed_size: int
+    trailing_data: bytes
     u32: dict[str, int]
     u32_arrays: dict[str, list[int]]
     f32: dict[str, float]
@@ -57,7 +60,7 @@ class MimicStorage:
     @property
     def kind(self) -> str:
         suffix = self.path.suffix.lower()
-        if suffix == ".bin":
+        if suffix in (".bin", ".mci"):
             return "instrument"
         if suffix == ".kit":
             return "kit"
@@ -97,10 +100,16 @@ def load_storage(path: Path) -> MimicStorage:
         raise ParseError(f"{path}: not a mimic_storage container")
     version = read_u32(data, len(STORAGE_MAGIC))
     expected_size = read_u32(data, len(STORAGE_MAGIC) + 4)
+    compressed = data[len(STORAGE_MAGIC) + 8 :]
     try:
-        payload = zlib.decompress(data[len(STORAGE_MAGIC) + 8 :])
+        decompressor = zlib.decompressobj()
+        payload = decompressor.decompress(compressed)
+        payload += decompressor.flush()
     except zlib.error as exc:
         raise ParseError(f"{path}: zlib decompression failed: {exc}") from exc
+    if not decompressor.eof:
+        raise ParseError(f"{path}: unterminated zlib stream")
+    compressed_size = len(compressed) - len(decompressor.unused_data)
     if len(payload) != expected_size:
         raise ParseError(
             f"{path}: decompressed {len(payload)} bytes, expected {expected_size}"
@@ -112,6 +121,8 @@ def load_storage(path: Path) -> MimicStorage:
         version=version,
         expected_size=expected_size,
         payload=payload,
+        compressed_size=compressed_size,
+        trailing_data=decompressor.unused_data,
         **parsed,
     )
 
@@ -281,7 +292,11 @@ def parse_checksum(path: Path) -> dict[str, Any]:
 
 def library_paths(path: Path) -> list[Path]:
     if path.is_dir():
-        return sorted(path.glob("instruments/*.bin")) + sorted(path.glob("kits/*.kit"))
+        return (
+            sorted(path.glob("instruments/*.bin"))
+            + sorted(path.glob("instruments/*.mci"))
+            + sorted(path.glob("kits/*.kit"))
+        )
     return [path]
 
 
@@ -372,12 +387,30 @@ def instrument_summary(storage: MimicStorage) -> dict[str, Any]:
     dlen = u32a.get(f"{pool_prefix}dlen", [])
     fcnt = u32a.get(f"{pool_prefix}fcnt", [])
     nchn = u32a.get(f"{pool_prefix}nchn", [])
-    drd_path = storage.path.with_suffix(".drd")
-    drd_size = drd_path.stat().st_size if drd_path.exists() else None
     max_end = max((offset + length for offset, length in zip(dofs, dlen)), default=0)
-    chunk_headers = []
+    drd_path = storage.path.with_suffix(".drd")
+    audio_source = "none"
+    audio_size = None
+    audio_reader = None
+    footer = b""
+    footer_md5_ok = None
     if drd_path.exists():
-        with drd_path.open("rb") as fh:
+        audio_source = "separate_drd"
+        audio_size = drd_path.stat().st_size
+        audio_reader = drd_path.open("rb")
+    elif storage.path.suffix.lower() == ".mci" and storage.trailing_data:
+        audio_source = "embedded_mci"
+        audio_size = max_end
+        audio_reader = io.BytesIO(storage.trailing_data[:max_end])
+        footer = storage.trailing_data[max_end:]
+        if len(footer) == 23 and footer.startswith(b"MMKCSM\x00"):
+            stored_md5 = footer[7:]
+            file_data = storage.path.read_bytes()
+            footer_md5_ok = hashlib.md5(file_data[:-23]).digest() == stored_md5
+
+    chunk_headers = []
+    if audio_reader is not None:
+        with audio_reader as fh:
             for idx, offset in enumerate(dofs[:5]):
                 fh.seek(offset)
                 raw = fh.read(16)
@@ -417,10 +450,15 @@ def instrument_summary(storage: MimicStorage) -> dict[str, Any]:
             "dlen_count": len(dlen),
             "fcnt_count": len(fcnt),
             "nchn_unique": sorted(set(nchn)),
+            "audio_source": audio_source,
+            "audio_size": audio_size,
             "drd_path": str(drd_path) if drd_path.exists() else "",
-            "drd_size": drd_size,
+            "drd_size": drd_path.stat().st_size if drd_path.exists() else None,
             "max_drd_end": max_end,
-            "spans_drd": (drd_size == max_end) if drd_size is not None else None,
+            "spans_drd": (audio_size == max_end) if audio_size is not None else None,
+            "mci_footer_magic": footer[:7].decode("latin1") if footer else "",
+            "mci_footer_md5": footer[7:].hex() if len(footer) == 23 else "",
+            "mci_footer_md5_ok": footer_md5_ok,
             "first_chunk_headers": chunk_headers,
             "raw_pcm_byte_match_count": sum(
                 1
@@ -578,6 +616,8 @@ def analyze_library(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     instruments = []
     kits = []
     for file_path in sorted(path.glob("instruments/*.bin")):
+        instruments.append(summarize_storage(load_storage(file_path)))
+    for file_path in sorted(path.glob("instruments/*.mci")):
         instruments.append(summarize_storage(load_storage(file_path)))
     for file_path in sorted(path.glob("kits/*.kit")):
         kits.append(summarize_storage(load_storage(file_path)))

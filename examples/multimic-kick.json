@@ -1,0 +1,50 @@
+{
+  "template_bin": "../assets/Tama SCM Steve Mackrill.lib/instruments/Kick Tma 22 SCL.bin",
+  "output_directory": "../build",
+  "library_version": "Open Mimic compiler example 1",
+  "codec_width": 24,
+  "preload_samples": 24000,
+  "sample_volume": 1.0,
+  "instrument": {
+    "name": "Open Mimic Example MultiMic Kick",
+    "library_name": "Open Mimic Compiler Example",
+    "type": "Kick",
+    "articulation_name": "Kick",
+    "midi_note": 36
+  },
+  "mics": [
+    { "name": "Kick In 110Hz", "volume": 1.0 },
+    { "name": "Kick Out 220Hz", "volume": 1.0 },
+    { "name": "Overheads Noise", "volume": 1.0 },
+    { "name": "Room 440-880Hz", "volume": 1.0 }
+  ],
+  "velocity_layers": [
+    {
+      "min_velocity": 0,
+      "min_volume": 0.35,
+      "max_volume": 0.7,
+      "samples": [
+        "../build/multimic-test-wavs/05-all-mics-6ch.wav",
+        "../build/multimic-test-wavs/05-all-mics-6ch.wav"
+      ]
+    },
+    {
+      "min_velocity": 48,
+      "min_volume": 0.65,
+      "max_volume": 1.0,
+      "samples": [
+        "../build/multimic-test-wavs/05-all-mics-6ch.wav",
+        "../build/multimic-test-wavs/05-all-mics-6ch.wav"
+      ]
+    },
+    {
+      "min_velocity": 96,
+      "min_volume": 0.9,
+      "max_volume": 1.25,
+      "samples": [
+        "../build/multimic-test-wavs/05-all-mics-6ch.wav",
+        "../build/multimic-test-wavs/05-all-mics-6ch.wav"
+      ]
+    }
+  ]
+}

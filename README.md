@@ -21,3 +21,10 @@ This repository collects research, format documentation, and analysis tools prod
 
 - The `assets/` folder (firmware binaries, the SCM Mimic library, etc.) is **not** tracked in git due to size and licensing. See individual research docs for how to obtain the corresponding public files.
 - All analysis is based on publicly downloadable firmware and manuals inspected as data. Nothing here redistributes Pearl's copyrighted binaries or sample content.
+
+## Multi-mic instrument compiler
+
+The hardware-validated Rust compiler is in [`compiler/`](./compiler). It builds
+importable Mimic Pro instruments with discrete close, overhead, and room channels,
+velocity layers, and round robins. See [`compiler/README.md`](./compiler/README.md)
+and [`examples/multimic-kick.json`](./examples/multimic-kick.json).

@@ -1,6 +1,6 @@
 # Mimic Pro Instrument Library Format
 
-Date: 2026-07-08
+Date: 2026-07-10
 
 Reverse-engineered from the downloaded SCM Mimic Library at
 `assets/SCM Mimic Library/`. Public release/install facts are tracked in
@@ -17,14 +17,14 @@ separate close/direct, overhead, and room mic definitions in the instrument
 metadata, and the kit files preserve those mic names. The public Instrument
 Editor appears to be the limitation, not the playback engine or on-disk format.
 
-For Open Mimic, this means a multi-mic importer/compiler is plausible, but it
-needs two pieces:
+Open Mimic now has a hardware-validated multi-mic compiler. The production Rust
+crate in `compiler/` writes `mimic_storage`, `.drd` audio, and `checksum.dat`, and
+supports manifest-defined velocity layers and round robins.
 
-- a `mimic_storage` writer for `.bin`, `.kit`, and `checksum.dat`
-- a correct encoder/decoder for the `.drd` audio chunk format
-
-The second piece is still unresolved. The `.drd` files are definitely addressed
-audio payloads, but they are not raw interleaved float32 PCM.
+The `.drd` files are addressed audio payloads using raw float32 preloads followed
+by a 1024-byte signed-delta streaming codec. The codec is implemented in
+`tools/drd_codec.py` and has been validated both against SCM data and on Mimic
+hardware with newly encoded six-channel audio.
 
 ## Source Package
 
@@ -53,6 +53,96 @@ The public eDrum Workshop page says "12 new instruments"; the local package has
 13 `.bin`/`.drd` basename pairs. The visible filenames suggest that the public
 "14x5.5 SCM Snare (wires on & wires off)" line maps to two local instruments:
 `Snare Tma 5.5 SCL` and `Snare Tma 5.5 SWO`.
+
+## Comparison with a public-Editor library (`eDW PUNCH.lib`)
+
+The local `eDW PUNCH.lib` is a useful single-mic control group. It contains 24
+instruments exported by the public Editor and 22 kits (`libver.mimicinfo`: `12
+June 2025`). Unlike SCM, it has no `checksum.dat`, and its instruments are
+monolithic `.mci` files rather than installed `.bin` + `.drd` pairs.
+
+The two libraries use the same decompressed instrument key/value schema, but
+their mic and audio layouts differ fundamentally:
+
+| Property | Tama SCM | eDW PUNCH |
+| --- | --- | --- |
+| Instrument packaging | `.bin` metadata + `.drd` audio | one `.mci` containing metadata + audio + footer |
+| Logical mics | 2–4 | exactly 1 |
+| Channels per audio chunk | 4–6 | 1 (Direct) or 2 (other variants) |
+| OH/Room representation | discrete named stereo mics (`mict=1`, `micpos=5/6`) | already mixed/rendered into the single mono/stereo mic |
+| Mix choices | one instrument exposes its constituent mics | separate `Direct`, `Dir&OH`, `Roomy`, and main instruments |
+| Tool provenance | internal/developer pipeline | public Mimic Instrument Editor workflow |
+
+Every instrument in both libraries satisfies:
+
+```text
+pool0nchn[i] = sum(2 if mic.isst else 1 for mic in enabled_mics)
+```
+
+for every sample-pool entry `i`. This is direct evidence that one pool chunk is
+an interleaved frame set containing all logical mic channels. Articulation
+`smpidx` arrays select one pool chunk; they do not select separate chunks per
+mic.
+
+Examples:
+
+- SCM tom: close mono + OH stereo + Room stereo = five channels per chunk.
+- SCM kick/snare: two close mono + OH stereo + Room stereo = six channels.
+- PUNCH `Direct`: one mono mic = one channel.
+- PUNCH main/`Dir&OH`/`Roomy`: one mic with `isst=1` = two channels. Even these
+  use `mict=0` and the close-mic name; the ambience was baked into the stereo
+  WAV before compilation rather than represented as an ambient mic.
+
+Within each PUNCH drum family, the variants generally have identical
+articulation/velocity/round-robin `smpidx` topology. Their audio channel counts,
+frame counts, lengths, and rendered audio differ. They are parallel bounces of
+the same playable instrument design, not mic views into shared audio.
+
+This comparison explains the public Editor limitation: it compiles each input
+WAV cell as one logical mic (mono or stereo). The SCM developer pipeline instead
+accepts a synchronized multi-channel sample for each cell and emits matching
+`micinfN` descriptors for the channel groups.
+
+After normalizing numeric mic/articulation/layer indexes in a representative SCM
+tom and PUNCH tom, all 67 SCM key shapes are also present in PUNCH. SCM has no
+unique multi-mic-only flag or section. PUNCH adds only two normalized key shapes:
+
+```text
+byte INSTedtr  = 1
+byte INSTmnlth = 1
+```
+
+These appear to mark public-Editor/manual instruments; they are absent from SCM
+and are not required for multi-mic playback. Structurally, multi-mic compilation
+is therefore the ordinary schema with:
+
+1. `INST0micnt > 1`;
+2. one complete `INST0micinfN...` record per logical mic;
+3. `isst` selecting one or two channels for that mic;
+4. every pool chunk encoded with the sum of those channel widths;
+5. every `INST0pool0nchn[i]` set to that summed channel count.
+
+No second sample-index graph or per-mic pool is present.
+
+### Monolithic `.mci` layout
+
+`.mci` begins with the same `mimic_storage` header and zlib-compressed metadata
+as `.bin`. The zlib stream is followed immediately by the audio bytes addressed
+by `pool0dofs`/`pool0dlen`, then a 23-byte integrity footer:
+
+```text
+"mimic_storage\0"
+u32 version = 3
+u32 decompressed_metadata_size
+zlib metadata stream                # exact end found via zlib EOF
+audio payload                       # max(dofs[i] + dlen[i]) bytes
+"MMKCSM\0"
+16-byte MD5                         # MD5 of the complete file before this footer
+```
+
+Pool offsets in `.mci` are relative to the beginning of the embedded audio
+payload, not the beginning of the file. `tools/mimic_kv.py` now detects this
+layout, verifies the footer MD5, and summarizes `.mci` alongside `.bin`.
 
 ## `checksum.dat`
 
@@ -322,14 +412,9 @@ Some SCM kit presets reference non-SCM installed instruments, for example
 compiler must preserve external library references, not assume every referenced
 instrument is bundled in the same `.lib` folder.
 
-## Open Tasks
+## Remaining Tasks
 
-1. Disassemble and document `CCompressedDatasource`, `CDecompressedDataSource`,
-   `CDiskStreamer::doDecomp`, and `CDiskStreamer::doDecomp_wave`.
-2. Decode the `.drd` chunk codec and produce a WAV export proof for one sample.
-3. Implement a read/write `mimic_storage` round trip and byte-compare against an
-   existing `.bin` and `.kit`.
-4. Implement `checksum.dat` writing and verify the stock import screen accepts a
-   rebuilt library with unchanged audio.
-5. Build the real compiler: multi-mic WAV sets plus articulation/velocity/round
-   robin metadata to `.bin`/`.drd`/`.kit`/`checksum.dat`.
+1. Add template coverage for instrument types beyond the validated SCM kick.
+2. Support multiple articulations and kit compilation in the Rust compiler.
+3. Hardware-test normalized custom thumbnails; retaining the template image is
+   already supported and known working.

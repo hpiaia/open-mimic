@@ -1,5 +1,7 @@
 # Binary/library assets (large, not tracked)
 assets/
+build/
+compiler/target/
 
 # macOS
 .DS_Store
