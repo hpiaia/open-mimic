@@ -1,0 +1,1589 @@
+# Mimic Pro Firmware Analysis
+
+Input: `/tmp/open-mimic-fw/mimic_pro_1_4_18.mup`
+
+## MUP Container
+
+- Magic: `mimic_software_update`
+- Format version: `1`
+- Header metadata length: `100` bytes
+- Expected payload size: `11806472` bytes
+- Actual payload size: `11806472` bytes
+- Compressed payload offset: `0x8a`
+- Compressed payload size: `5282293` bytes
+- Expected CRC32C: `0xe8ae0866`
+- Actual CRC32C: `0xe8ae0866`
+- CRC valid: `True`
+- Size valid: `True`
+
+The checksum uses CRC32C/Castagnoli, not legacy IEEE CRC-32. The 100-byte metadata block is read by the updater but does not appear to be used by the software-update extraction path.
+
+Metadata block:
+
+```text
+`.`...............`........"............`8........@.....p9..............@.B................"........
+```
+
+```text
+609c6001000000000000000000000000a09c60010000000000face22ee978208d6eda000000000006038821cfe7f0000d0e64000000000007039821cfe7f000000000000000000004004420000000000daeda0000000000000face22ee978208d6eda000
+```
+
+## ELF Summary
+
+- ELF entry: `0x0001e251`
+- ELF machine: `40` (`40` means ARM)
+- Dynamic dependencies:
+- `libX11.so.6`
+- `libXext.so.6`
+- `libXinerama.so.1`
+- `libdl.so.2`
+- `libfreetype.so.6`
+- `libpthread.so.0`
+- `libstdc++.so.6`
+- `libm.so.6`
+- `libgcc_s.so.1`
+- `libc.so.6`
+
+## Sections
+
+| Section | VMA | File Offset | Size |
+| --- | ---: | ---: | ---: |
+| `.interp` | `0x00010134` | `0x00000134` | `0x19` |
+| `.note.ABI-tag` | `0x00010150` | `0x00000150` | `0x20` |
+| `.note.gnu.build-id` | `0x00010170` | `0x00000170` | `0x24` |
+| `.hash` | `0x00010194` | `0x00000194` | `0xb88` |
+| `.dynsym` | `0x00010d1c` | `0x00000d1c` | `0x1d90` |
+| `.dynstr` | `0x00012aac` | `0x00002aac` | `0x1f6b` |
+| `.gnu.version` | `0x00014a18` | `0x00004a18` | `0x3b2` |
+| `.gnu.version_r` | `0x00014dcc` | `0x00004dcc` | `0x170` |
+| `.rel.dyn` | `0x00014f3c` | `0x00004f3c` | `0xa0` |
+| `.rel.plt` | `0x00014fdc` | `0x00004fdc` | `0xd68` |
+| `.init` | `0x00015d44` | `0x00005d44` | `0xc` |
+| `.plt` | `0x00015d50` | `0x00005d50` | `0x143c` |
+| `.text` | `0x00017190` | `0x00007190` | `0x5f5e28` |
+| `.fini` | `0x0060cfb8` | `0x005fcfb8` | `0x8` |
+| `.rodata` | `0x0060cfc0` | `0x005fcfc0` | `0x293340` |
+| `.wavedata` | `0x008a0300` | `0x00890300` | `0x57c80` |
+| `.ARM.extab` | `0x008f7f80` | `0x008e7f80` | `0x2e1f8` |
+| `.ARM.exidx` | `0x00926178` | `0x00916178` | `0xfba0` |
+| `.eh_frame` | `0x00935d18` | `0x00925d18` | `0x4` |
+| `.init_array` | `0x00945d1c` | `0x00925d1c` | `0x390` |
+| `.fini_array` | `0x009460ac` | `0x009260ac` | `0x4` |
+| `.jcr` | `0x009460b0` | `0x009260b0` | `0x4` |
+| `.dynamic` | `0x009460b4` | `0x009260b4` | `0x130` |
+| `.got` | `0x009461e4` | `0x009261e4` | `0x6cc` |
+| `.data` | `0x009468b0` | `0x009268b0` | `0x87bc` |
+| `.bss` | `0x0094f070` | `0x0092f06c` | `0x27a3dc0` |
+| `.comment` | `0x00000000` | `0x0092f06c` | `0x2d` |
+| `.ARM.attributes` | `0x00000000` | `0x0092f099` | `0x33` |
+| `.debug_aranges` | `0x00000000` | `0x0092f0d0` | `0xb0` |
+| `.debug_info` | `0x00000000` | `0x0092f180` | `0x411` |
+| `.debug_abbrev` | `0x00000000` | `0x0092f591` | `0x170` |
+| `.debug_line` | `0x00000000` | `0x0092f701` | `0x267` |
+| `.debug_frame` | `0x00000000` | `0x0092f968` | `0x44` |
+| `.debug_str` | `0x00000000` | `0x0092f9ac` | `0x2da` |
+| `.debug_loc` | `0x00000000` | `0x0092fc86` | `0xbb` |
+| `.debug_ranges` | `0x00000000` | `0x0092fd48` | `0x68` |
+| `.shstrtab` | `0x00000000` | `0x0092fdb0` | `0x181` |
+| `.symtab` | `0x00000000` | `0x0092ff34` | `0xb9700` |
+| `.strtab` | `0x00000000` | `0x009e9634` | `0x158a91` |
+
+## Source File Names
+
+These names are embedded in the binary symbol/string tables and are useful for reconstructing module boundaries.
+
+- `../sysdeps/arm/crti.S`
+- `../sysdeps/arm/crtn.S`
+- `../sysdeps/arm/start.S`
+- `AudioOutTest.cpp`
+- `Biquad.cpp`
+- `CommonSettingsHolder.cpp`
+- `CompressedDataSource.cpp`
+- `ComputingThread.cpp`
+- `DACTest.cpp`
+- `DataCompression.cpp`
+- `DecompressedDataSource.cpp`
+- `Detector.cpp`
+- `DetectorProcessingBuffer.cpp`
+- `DirectoryManager.cpp`
+- `DiskStreamer.cpp`
+- `DriveThread.cpp`
+- `DrmConverter.cpp`
+- `EDrumEngine2.cpp`
+- `EDrumString.cpp`
+- `EDrumTriggerEng2.cpp`
+- `ExtPortControl.cpp`
+- `ExtPortTest.cpp`
+- `ExtPortTest_v2.cpp`
+- `FileUtils.cpp`
+- `HatCtrl.cpp`
+- `InputRegulatorSettings.cpp`
+- `InstrumentArt.cpp`
+- `InstrumentData.cpp`
+- `InstrumentLoader.cpp`
+- `InstrumentSlot.cpp`
+- `InstrumentSlotDescriptor.cpp`
+- `InstrumentStorage.cpp`
+- `KitPreset_setList.cpp`
+- `Main.cpp`
+- `MainComponent.cpp`
+- `MemoryBuffer.cpp`
+- `MetrEngine.cpp`
+- `RecordMgr.cpp`
+- `RiffWave.cpp`
+- `SampleItem.cpp`
+- `SamplerEngine.cpp`
+- `SettingsStorageManager.cpp`
+- `SingleEnvelope.cpp`
+- `SwitchDualLevel.cpp`
+- `SwitchSingleLevel.cpp`
+- `T0.S`
+- `TPadProc_crash_2zone_piezo_switch.cpp`
+- `TPadProc_drum_1zone_piezo.cpp`
+- `TPadProc_drum_1zone_piezo_switch.cpp`
+- `TPadProc_drum_2zone_piezo_switch.cpp`
+- `TPadProc_drum_2zone_split_piezo_piezo.cpp`
+- `TPadProc_drum_3zone_piezo_piezo_2.cpp`
+- `TPadProc_drum_3zone_piezo_switch.cpp`
+- `TPadProc_drum_4zone_piezo_dual_switch.cpp`
+- `TPadProc_drum_4zone_piezo_piezo_atv_ad13s.cpp`
+- `TPadProc_hh_1zone_piezo_variable.cpp`
+- `TPadProc_hh_2zone_piezo_switch_variable.cpp`
+- `TPadProc_hh_opennes_detector.cpp`
+- `TPadProc_ride_4zone_piezo_dual_switch.cpp`
+- `TPadProc_ride_4zone_piezo_piezo_switch.cpp`
+- `TPadProc_ride_4zone_piezo_switch_switch.cpp`
+- `TPadProc_ride_4zone_piezo_switch_switch_lemon.cpp`
+- `TrigData.cpp`
+- `TrigDataCapture.cpp`
+- `TrigInputTest.cpp`
+- `TrigInputTest_v2.cpp`
+- `TrigPadDescriptor.cpp`
+- `TrigPadPreset.cpp`
+- `TrigPadPresetStorage.cpp`
+- `TrigPadStorage.cpp`
+- `TrigSimulator.cpp`
+- `TrigZoneData.cpp`
+- `UISettingsHolder.cpp`
+- `Utils.cpp`
+- `VoiceEnvelope.cpp`
+- `VoiceEqContext.cpp`
+- `VoiceItem.cpp`
+- `VoiceItemBuffersStorage.cpp`
+- `VoiceItemPool.cpp`
+- `VolumeSettingsHolder.cpp`
+- `XTalkManager.cpp`
+- `adc.cpp`
+- `atan_tab.cpp`
+- `audiofile_writer.cpp`
+- `auxAdc.cpp`
+- `comp_presets.cpp`
+- `convoengine.cpp`
+- `crti.S`
+- `crtn.S`
+- `crtstuff.c`
+- `curve_5point.cpp`
+- `data_storage.cpp`
+- `db.cpp`
+- `debug_info.cpp`
+- `edrums_app.cpp`
+- `elf-init.c`
+- `encoder_read.cpp`
+- `fft.cpp`
+- `file_checker.cpp`
+- `free_comp.cpp`
+- `init.c`
+- `instLibStorage.cpp`
+- `juce_audio_basics.cpp`
+- `juce_audio_formats.cpp`
+- `juce_core.cpp`
+- `juce_cryptography.cpp`
+- `juce_data_structures.cpp`
+- `juce_events.cpp`
+- `juce_graphics.cpp`
+- `juce_gui_basics.cpp`
+- `juce_gui_extra.cpp`
+- `kitPresetStorage.cpp`
+- `midi_inout.cpp`
+- `midi_inout_hw.cpp`
+- `mimic_images.cpp`
+- `mimic_waves.cpp`
+- `mixer_engine.cpp`
+- `mixer_strip_descriptor.cpp`
+- `noteOffGenerator.cpp`
+- `player_fileReader.cpp`
+- `player_manager.cpp`
+- `player_playlist.cpp`
+- `recorderDataSource.cpp`
+- `regulator.cpp`
+- `reverb_1.cpp`
+- `sampler/../trigger/../sampler/../util/readerwriterqueue.h`
+- `sampler/../util/readerwriterqueue.h`
+- `sincTable.cpp`
+- `start.S`
+- `stddef.h`
+- `sys_utils.cpp`
+- `trigalgo_1.cpp`
+- `ui_captureHatMinMaxPosPane.cpp`
+- `ui_captureTopVelocityPane.cpp`
+- `ui_captureXtalkCell.cpp`
+- `ui_captureXtalkPadProcessPane.cpp`
+- `ui_captureXtalkPane.cpp`
+- `ui_compOutMeter.cpp`
+- `ui_compPane.cpp`
+- `ui_currentKit.cpp`
+- `ui_currentSetList.cpp`
+- `ui_curve.cpp`
+- `ui_curve_hh_cc.cpp`
+- `ui_dataMgr.cpp`
+- `ui_directOutMixer.cpp`
+- `ui_directOutMixer_cell.cpp`
+- `ui_directOutMixer_cellHolder.cpp`
+- `ui_editBox_virtualKeyboard.cpp`
+- `ui_editKit.cpp`
+- `ui_editKit_assignInstToPad2.cpp`
+- `ui_eqPane.cpp`
+- `ui_eqPaneForKnob.cpp`
+- `ui_fadingInfoPopup.cpp`
+- `ui_fileBrowser.cpp`
+- `ui_fileBrowser_SinglePane.cpp`
+- `ui_fileBrowser_SinglePane_forPresets.cpp`
+- `ui_grMeter.cpp`
+- `ui_headphonesMeter.cpp`
+- `ui_homePane.cpp`
+- `ui_hwtest_audio_outs.cpp`
+- `ui_hwtest_auxAdc.cpp`
+- `ui_hwtest_extPort.cpp`
+- `ui_hwtest_extPort_v2.cpp`
+- `ui_hwtest_headphones.cpp`
+- `ui_hwtest_midi.cpp`
+- `ui_hwtest_pane.cpp`
+- `ui_hwtest_trig_in_test.cpp`
+- `ui_hwtest_trig_in_test_v2.cpp`
+- `ui_kitListViewer.cpp`
+- `ui_kitListViewer_cell.cpp`
+- `ui_kitListViewer_cellList.cpp`
+- `ui_kitPieceBrowser.cpp`
+- `ui_kitPieceBrowserCell.cpp`
+- `ui_kitPieceBrowser_setAuxCellType.cpp`
+- `ui_kitPieceCell.cpp`
+- `ui_kitPresetBrowser.cpp`
+- `ui_knobActionReceiver.cpp`
+- `ui_knobActionSender.cpp`
+- `ui_lookAndFeel.cpp`
+- `ui_mainMenuPane.cpp`
+- `ui_mainPane.cpp`
+- `ui_metrBigPane.cpp`
+- `ui_metrSmallPane.cpp`
+- `ui_mixerAuxMetrVolumesPane.cpp`
+- `ui_mixerEmptyPane.cpp`
+- `ui_mixerEtcPane.cpp`
+- `ui_mixerFxPane.cpp`
+- `ui_mixerFxPaneHolder.cpp`
+- `ui_mixerFxPane_hp.cpp`
+- `ui_mixerFxPane_kit.cpp`
+- `ui_mixerFxPane_master.cpp`
+- `ui_mixerMicPane.cpp`
+- `ui_mixerMicPaneHolder.cpp`
+- `ui_mixerModPane.cpp`
+- `ui_mixerModPaneHolder.cpp`
+- `ui_mixerPane.cpp`
+- `ui_mixerReverbPane.cpp`
+- `ui_mixerSettingsPane.cpp`
+- `ui_mixerStrip.cpp`
+- `ui_mixerStripEdit.cpp`
+- `ui_mixerStripEditPane.cpp`
+- `ui_mixerStripEdit_bleed.cpp`
+- `ui_pageLock.cpp`
+- `ui_playerPaneBig.cpp`
+- `ui_playerPane_small.cpp`
+- `ui_playerPositionBigPane.cpp`
+- `ui_playerPositionSmallPane.cpp`
+- `ui_player_songList.cpp`
+- `ui_player_songListCell.cpp`
+- `ui_popup_menu.cpp`
+- `ui_popup_menu_chooser.cpp`
+- `ui_popup_menu_item.cpp`
+- `ui_posMeter.cpp`
+- `ui_recorder_gridPane.cpp`
+- `ui_recorder_mainPane.cpp`
+- `ui_recorder_setupPane.cpp`
+- `ui_recorder_trackPane.cpp`
+- `ui_recorder_trackTablePane.cpp`
+- `ui_regulatorSetup.cpp`
+- `ui_regulatorSetup_piezo.cpp`
+- `ui_reverbInstList.cpp`
+- `ui_reverbInstList_cell.cpp`
+- `ui_reverbInstList_cellHolder.cpp`
+- `ui_reverbPane.cpp`
+- `ui_screenSaver.cpp`
+- `ui_setListViewer.cpp`
+- `ui_setListViewer_cell.cpp`
+- `ui_setListViewer_cellList.cpp`
+- `ui_setListViewer_editTile.cpp`
+- `ui_settingsPane.cpp`
+- `ui_setup_backup.cpp`
+- `ui_setup_dev.cpp`
+- `ui_setup_files.cpp`
+- `ui_setup_instLayout.cpp`
+- `ui_setup_instLayout_cell.cpp`
+- `ui_setup_instLayout_cellHolder.cpp`
+- `ui_setup_instLayout_globalSettingsPane.cpp`
+- `ui_setup_managePresets.cpp`
+- `ui_setup_screenSaver.cpp`
+- `ui_setup_sys.cpp`
+- `ui_setup_topBar.cpp`
+- `ui_setup_ui.cpp`
+- `ui_splashScreens.cpp`
+- `ui_statusPane.cpp`
+- `ui_tabButtonControl.cpp`
+- `ui_tabControl.cpp`
+- `ui_tab_laf.cpp`
+- `ui_test_regulatorSetup.cpp`
+- `ui_test_trigInputTestPane.cpp`
+- `ui_test_trigSignalStrip.cpp`
+- `ui_trigCurvesTab.cpp`
+- `ui_trigEmptyTab.cpp`
+- `ui_trigHHPosTab.cpp`
+- `ui_trigHHSettings.cpp`
+- `ui_trigMainPane2.cpp`
+- `ui_trigMeter.cpp`
+- `ui_trigMidiTab.cpp`
+- `ui_trigPiezoTab.cpp`
+- `ui_trigPiezo_captureXtalk.cpp`
+- `ui_trigSetup.cpp`
+- `ui_trigSim.cpp`
+- `ui_trigSwitchTab.cpp`
+- `ui_trigXTalkTab.cpp`
+- `ui_trigZoneTab.cpp`
+- `ui_trigZoneVeloTab.cpp`
+- `ui_trigZoneVolTab.cpp`
+- `ui_trig_globalSettings.cpp`
+- `updater_dataStorage.cpp`
+- `velocurve_presets.cpp`
+
+## Device And Kernel Paths
+
+- `/dev/ads7953.0`
+- `/dev/ads7953.1`
+- `/dev/lcd-conf`
+- `/dev/mcasp.0`
+- `/dev/mcasp.1`
+- `/dev/regulators`
+- `/dev/ttyS9`
+- `/proc/cpuinfo`
+- `/proc/meminfo`
+- `/proc/self/exe`
+- `/proc/self/status`
+- `/sys/class/gpio/export`
+- `/sys/class/gpio/gpio%d/direction`
+- `/sys/class/gpio/gpio%d/value`
+- `/sys/class/gpio/gpio190/direction`
+- `/sys/class/gpio/gpio190/value`
+- `/sys/class/gpio/gpio191/direction`
+- `/sys/class/gpio/gpio191/value`
+- `/sys/class/gpio/gpio192/direction`
+- `/sys/class/gpio/gpio192/value`
+- `/sys/class/gpio/gpio197/value`
+- `/sys/class/gpio/gpio215/value`
+- `/sys/class/gpio/gpio29/value`
+- `/sys/class/gpio/gpio93/value`
+- `/sys/class/thermal/thermal_zone`
+
+## Mount Points
+
+- `/mnt/sd-flash/`
+- `/mnt/settings/`
+- `/mnt/settings/instrument_presets/`
+- `/mnt/settings/kits/`
+- `/mnt/settings/module_settings/`
+- `/mnt/settings/pad_presets/`
+- `/mnt/settings/setlists/`
+- `/mnt/settings/velocurve_presets/`
+- `/mnt/usb-flash/`
+- `/mnt/user/`
+- `/mnt/user/instruments/`
+- `/mnt/user/trig_data/`
+- `/mnt/user/wave/`
+
+## Shell Commands
+
+- `2>/dev/null`
+- `mkdosfs -F 32 -I /dev/mmcblk0p1`
+- `mkdosfs -F 32 -I /dev/sdb1`
+- `mkfs.ext4 -F /dev/sda3`
+- `parted -s /dev/mmcblk0 -- mklabel msdos mkpart primary fat32 4MiB -1s`
+- `parted -s /dev/sdb -- mklabel msdos mkpart primary fat32 0% 100%`
+- `sync`
+- `sync@@GLIBC_2.4`
+- `umount -f /dev/mmcblk0p0`
+- `umount -f /dev/mmcblk0p1`
+- `umount /dev/mmcblk0p0`
+- `umount /dev/mmcblk0p1`
+- `umount /dev/mmcblk0p2`
+- `umount /dev/mmcblk0p3`
+- `umount /dev/mmcblk0p4`
+- `umount /dev/mmcblk0p5`
+- `umount /dev/mmcblk0p6`
+- `umount /dev/mmcblk0p7`
+- `umount /dev/mmcblk0p8`
+- `umount /dev/sda3`
+- `umount /dev/sdb1`
+- `umount /dev/sdb2`
+- `umount /dev/sdb3`
+- `umount /dev/sdb4`
+- `umount /dev/sdb5`
+
+## Update-Related Strings
+
+- `/root/kexec`
+- `27IPrepareForOsUpdateCallback`
+- `APPLY OS UPDATE`
+- `APPLY SELECTED OS UPDATE`
+- `APPLY SELECTED SOFTWARE UPDATE`
+- `APPLY SOFTWARE UPDATE`
+- `Create OS Update`
+- `Create SW Update`
+- `DO NOT POWER OFF YOUR MIMIC DURING UPDATE!`
+- `Error: Can't Open Update File.`
+- `Error: Corrupted Software Update File.`
+- `Error: Corrupted Update File.`
+- `Error: Unsupported Update Data.`
+- `Error: Unsupported Update File Version.`
+- `Import Complete. Please restart now`
+- `N4juce12AsyncUpdater19AsyncUpdaterMessageE`
+- `N4juce12AsyncUpdaterE`
+- `Please restart now`
+- `Sound Is Turned Off Due To The Need Of OS Update. Please Download Your Mimic OS Update From http://pearl-electronics-support.com/ And Use Mimic Settings/Sys Page To Install It`
+- `_GLOBAL__sub_I__ZN19CUpdaterDataStorageC2Ev`
+- `_ZN10CCurvePane16UpdateCurveTraceEv`
+- `_ZN10CUIDataMgr18PrepareForOsUpdateEv`
+- `_ZN10CVoiceItem19RestartAllEnvelopesEv`
+- `_ZN11CHWTestPane9updateBtnEP15CHWTestPaneBasePN4juce10TextButtonE`
+- `_ZN12CEncoderData11UpdateStateEv`
+- `_ZN12CMetrBigPane12updateLabelsEv`
+- `_ZN12CMetrBigPane6UpdateEv`
+- `_ZN12CMixerEngine11UpdateOHVolEf`
+- `_ZN12CMixerEngine12UpdateHatVolEf`
+- `_ZN12CMixerEngine13UpdateRideVolEf`
+- `_ZN12CMixerEngine13UpdateRoomVolEf`
+- `_ZN12CMixerEngine13UpdateTomsVolEf`
+- `_ZN12CMixerEngine14UpdateAuxInVolEf`
+- `_ZN12CMixerEngine14UpdateKicksVolEf`
+- `_ZN12CMixerEngine15UpdateSnaresVolEf`
+- `_ZN12CMixerEngine19checkForDataUpdatesEv`
+- `_ZN12CMixerEngine19checkForDataUpdatesEv.part.24.constprop.29`
+- `_ZN13CAudioOutTest12PrepareStartEv`
+- `_ZN13CMixerModPane18updateSlidersNamesEv`
+- `_ZN13CXtalkManager23updateIgnoredAdcChannelEib`
+- `_ZN13CXtalkManager24UpdateIgnoredAdcChannelsEP15CTriggerEngine2`
+- `_ZN14CHHCCCurvePane16UpdateCurveTraceEv`
+- `_ZN14CMetrSmallPane6UpdateEv`
+- `_ZN14CPlayerManager10updateLoopEv`
+- `_ZN14CTrigInputTest12PrepareStartEv`
+- `_ZN15CInstrumentSlot20UpdateMicMuteVolumesEv`
+- `_ZN15CVoiceEqContext42CheckAndUpdateCountersToRenderSamplesCountEi`
+- `_ZN16CFileBrowserPane22UpdateSSDFreeSpaceInfoEv`
+- `_ZN16CFileBrowserPane7RestartE24eDualPaneFileBrowserModeRN4juce6StringES3_S3_S3_bbbb`
+- `_ZN16CPlayerPaneSmall18UpdateButtonsStateEv`
+- `_ZN17CDirectoryManager26ReplyAppUpdateNameFileNameEv`
+- `_ZN17CKitPresetStorage17UpdateSetListItemEiP19CShortKitPresetInfo`
+- `_ZN17CSetList_editTile12updateLabelsEv`
+- `_ZN17CSettings_SysPane13applyOSUpdateERN4juce4FileE`
+- `_ZN17CSettings_SysPane13applySWUpdateERN4juce4FileE`
+- `_ZN17CSettings_SysPane26PrepareForOsUpdateCallbackEv`
+- `_ZN17CTrigInputTest_v212PrepareStartEv`
+- `_ZN18CInstrumentStorage23UpdateAuxInstrumentTypeEP25CInstrumentSlotDescriptorR8CEStringbb`
+- `_ZN18CManagePresetsPane14restartBrowserEv`
+- `_ZN18CTrigPadDescriptor13updateHHCurveEv`
+- `_ZN18CTrigPadDescriptor15updateVeloCurveEv`
+- `_ZN18CTrigPadDescriptor47UpdateIstZoneAssignmentsForChangedIntrumentTypeEP25CInstrumentSlotDescriptor`
+- `_ZN19CUpdaterDataStorage12CreateUpdateEPKcS1_`
+- `_ZN19CUpdaterDataStorage12executeChunkERN4juce6StringE`
+- `_ZN19CUpdaterDataStorage13addTagAndDataE17softwareUpdateTagPvi`
+- `_ZN19CUpdaterDataStorage15processOSUpdateEPKc`
+- `_ZN19CUpdaterDataStorage16DecompressUpdateEPKcS1_`
+- `_ZN19CUpdaterDataStorage17addFileToOSUpdateEPKc17softwareUpdateTagRN4juce6StringES5_b`
+- `_ZN19CUpdaterDataStorage17readTagAndDataLenERiS0_`
+- `_ZN19CUpdaterDataStorage18saveOSUpdateToFileEPKc`
+- `_ZN19CUpdaterDataStorage21startBuildingOSUpdateEPKci`
+- `_ZN19CUpdaterDataStorage23decompressFileFromChunkEiRN4juce6StringE`
+- `_ZN19CUpdaterDataStorage25setLowestCompatibleOsDateEv`
+- `_ZN19CUpdaterDataStorage29SetPrepareForOsUpdateCallbackEP27IPrepareForOsUpdateCallback`
+- `_ZN19CUpdaterDataStorage8readDataEiPc`
+- `_ZN19CUpdaterDataStorage9readChunkEv`
+- `_ZN19CUpdaterDataStorageC1Ev`
+- `_ZN19CUpdaterDataStorageC2Ev`
+- `_ZN19CUpdaterDataStorageD1Ev`
+- `_ZN19CUpdaterDataStorageD2Ev`
+- `_ZN21CCompressedDatasource15UpdateAfterReadEi`
+- `_ZN21CCompressedDatasource18UpdateCompDataSizeEi`
+- `_ZN21CCompressedDatasource26GetFileReadOffsetAndUpdateEv`
+- `_ZN21CMixerStripDescriptor17SignalLevelUpdateEv`
+- `_ZN21CMixerStripDescriptor18UpdateTargetValuesEv`
+- `_ZN21CTrigPadPresetStorage7RestartEv`
+- `_ZN22CPlayerPositionBigPane6UpdateEv`
+- `_ZN23CTrigGlobalSettingsPane20updateMiddleCNoteBtnEv`
+- `_ZN24CPlayerPositionSmallPane6UpdateEv`
+- `_ZN27CCaptureXtalkPadProcessPane17updateCaptureBtnsEv`
+- `_ZN27CFileBrowserPane_singlePane7RestartERN4juce6StringES2_S2_bb`
+- `_ZN38CFileBrowserPane_singlePane_forPresets7RestartERN4juce6StringES2_S2_`
+- `_ZN4juce10CallOutBox14updatePositionERKNS_9RectangleIiEES4_`
+- `_ZN4juce10TextEditor19updateCaretPositionEv`
+- `_ZN4juce10TextEditor19updateValueFromTextEv`
+- `_ZN4juce10TextEditor20updateTextHolderSizeEv`
+- `_ZN4juce11AlertWindow12updateLayoutEb`
+- `_ZN4juce12AsyncUpdater18triggerAsyncUpdateEv`
+- `_ZN4juce12AsyncUpdater18triggerAsyncUpdateEv.part.41`
+- `_ZN4juce12AsyncUpdater19AsyncUpdaterMessage15messageCallbackEv`
+- `_ZN4juce12AsyncUpdater19AsyncUpdaterMessageD0Ev`
+- `_ZN4juce12AsyncUpdater19AsyncUpdaterMessageD1Ev`
+- `_ZN4juce12AsyncUpdater19AsyncUpdaterMessageD2Ev`
+- `_ZN4juce12AsyncUpdater19cancelPendingUpdateEv`
+- `_ZN4juce12AsyncUpdater23handleUpdateNowIfNeededEv`
+- `_ZN4juce12AsyncUpdaterC1Ev`
+- `_ZN4juce12AsyncUpdaterC2Ev`
+- `_ZN4juce12AsyncUpdaterD0Ev`
+- `_ZN4juce12AsyncUpdaterD1Ev`
+- `_ZN4juce12AsyncUpdaterD2Ev`
+- `_ZN4juce12DropShadower12updateParentEv`
+- `_ZN4juce12DropShadower13updateShadowsEv`
+- `_ZN4juce12MenuBarModel17handleAsyncUpdateEv`
+- `_ZN4juce12ModifierKeys22updateCurrentModifiersEv`
+- `_ZN4juce12TreeViewItem15updatePositionsEi`
+- `_ZN4juce12_GLOBAL__N_121updateStatInfoForFileERKNS_6StringEPbPxPNS_4TimeES7_S4_`
+- `_ZN4juce13ComponentPeer12updateBoundsEv`
+- `_ZN4juce13FlacNamespace17FLAC__crc8_updateEhPh`
+- `_ZN4juce13FlacNamespace23FLAC__crc8_update_blockEPKhjPh`
+- `_ZN4juce13FlacNamespaceL18crc16_update_word_EPNS0_15FLAC__BitReaderEj.isra.0`
+- `_ZN4juce13MPEInstrument15updateDimensionEiRNS0_12MPEDimensionENS_8MPEValueE`
+- `_ZN4juce13MPEInstrument21updateDimensionMasterERNS_7MPEZoneERNS0_12MPEDimensionENS_8MPEValueE`
+- `_ZN4juce13MPEInstrument22updateDimensionForNoteERNS_7MPENoteERNS0_12MPEDimensionENS_8MPEValueE`
+- `_ZN4juce13MPEInstrument24updateNoteTotalPitchbendERNS_7MPENoteE`
+- `_ZN4juce13ToolbarButton14updateDrawableEv`
+- `_ZN4juce13TooltipWindow14updatePositionERKNS_6StringENS_5PointIiEENS_9RectangleIiEE`
+- `_ZN4juce13zlibNamespaceL12updatewindowEPNS0_10z_stream_sEj`
+- `_ZN4juce14ColourSelector6updateEv`
+- `_ZN4juce14ColourSelector9updateHSVEv`
+- `_ZN4juce14UnitTestRunner14resultsUpdatedEv`
+- `_ZN4juce15ResizableWindow22updateLastPosIfShowingEv`
+- `_ZN4juce15ResizableWindow28updateLastPosIfNotFullScreenEv`
+- `_ZN4juce15TabbedButtonBar18updateTabPositionsEb`
+- `_ZN4juce15TabbedButtonBar18updateTabPositionsEb.constprop.885`
+- `_ZN4juce15pnglibNamespace20png_read_update_infoEPNS0_14png_struct_defEPNS0_12png_info_defE`
+- `_ZN4juce16CodeDocumentLine12updateLengthEv`
+- `_ZN4juce16ComponentBuilder21updateChildComponentsERNS_9ComponentERKNS_9ValueTreeE`
+- `_ZN4juce16FileListTreeItem10updateIconEb`
+- `_ZN4juce16FileListTreeItem17handleAsyncUpdateEv`
+- `_ZN4juce16MenuBarComponent20updateItemUnderMouseENS_5PointIiEE`
+- `_ZN4juce16MenuBarComponent20updateItemUnderMouseENS_5PointIiEE.constprop.748`
+- `_ZN4juce16MouseInputSource22forceMouseCursorUpdateEv`
+- `_ZN4juce16jpeglibNamespace22jpeg_resync_to_restartEPNS0_22jpeg_decompress_structEi`
+- `_ZN4juce16jpeglibNamespaceL10update_boxEPNS0_22jpeg_decompress_structEPNS0_3boxE.isra.13`
+- `_ZN4juce16jpeglibNamespaceL14emit_restart_pEPNS0_21phuff_entropy_encoderEi`
+- `_ZN4juce16jpeglibNamespaceL16process_restartpEPNS0_22jpeg_decompress_structE`
+- `_ZN4juce16jpeglibNamespaceL19read_restart_markerEPNS0_22jpeg_decompress_structE`
+- `_ZN4juce17ChangeBroadcaster25ChangeBroadcasterCallback17handleAsyncUpdateEv`
+- `_ZN4juce17DrawableComposite25updateBoundsToFitChildrenEv`
+- `_ZN4juce17FileListComponent13ItemComponent10updateIconEb`
+- `_ZN4juce17FileListComponent13ItemComponent17handleAsyncUpdateEv`
+- `_ZN4juce17FilenameComponent17handleAsyncUpdateEv`
+- `_ZN4juce18LinuxComponentPeer16updateBorderSizeEv`
+- `_ZN4juce18LinuxComponentPeer18updateKeyModifiersEi`
+- `_ZN4juce18LinuxComponentPeer18updateWindowBoundsEv`
+- `_ZN4juce18LinuxComponentPeer22updateModifierMappingsEv`
+- `_ZN4juce18MultiDocumentPanel11updateOrderEv`
+- `_ZN4juce19CodeEditorComponent16updateScrollBarsEv`
+- `_ZN4juce19CodeEditorComponent19updateCaretPositionEv`
+- `_ZN4juce19CodeEditorComponent21updateCachedIteratorsEi`
+- `_ZN4juce19CodeEditorComponent5Pimpl17handleAsyncUpdateEv`
+- `_ZN4juce19DrawableTypeHandlerINS_12DrawablePathEE24updateComponentFromStateEPNS_9ComponentERKNS_9ValueTreeE`
+- `_ZN4juce19DrawableTypeHandlerINS_12DrawableTextEE24updateComponentFromStateEPNS_9ComponentERKNS_9ValueTreeE`
+- `_ZN4juce19DrawableTypeHandlerINS_13DrawableImageEE24updateComponentFromStateEPNS_9ComponentERKNS_9ValueTreeE`
+- `_ZN4juce19DrawableTypeHandlerINS_17DrawableCompositeEE24updateComponentFromStateEPNS_9ComponentERKNS_9ValueTreeE`
+- `_ZN4juce19DrawableTypeHandlerINS_17DrawableRectangleEE24updateComponentFromStateEPNS_9ComponentERKNS_9ValueTreeE`
+- `_ZN4juce19MidiMessageSequence18updateMatchedPairsEv`
+- `_ZN4juce19MidiMessageSequence30createControllerUpdatesForTimeEidRNS_5ArrayINS_11MidiMessageENS_20DummyCriticalSectionELi0EEE`
+- `_ZN4juce20DragAndDropContainer18DragImageComponent14updateLocationEbNS_5PointIiEE`
+- `_ZN4juce20TableHeaderComponent17handleAsyncUpdateEv`
+- `_ZN4juce20TableHeaderComponent22updateColumnUnderMouseERKNS_10MouseEventE`
+- `_ZN4juce21ModalComponentManager17handleAsyncUpdateEv`
+- `_ZN4juce21TextPropertyComponent9LabelComp13updateColoursEv`
+- `_ZN4juce22ChildProcessPingThread17handleAsyncUpdateEv`
+- `_ZN4juce23ComponentBuilderHelpersL15updateComponentERNS_16ComponentBuilderERKNS_9ValueTreeE`
+- `_ZN4juce24MouseInputSourceInternal17handleAsyncUpdateEv`
+- `_ZN4juce24MultiDocumentPanelWindow11updateOrderEv`
+- `_ZN4juce24ResizableBorderComponent15updateMouseZoneERKNS_10MouseEventE`
+- `_ZN4juce24StretchableLayoutManager38updatePrefSizesToMatchCurrentPositionsEv`
+- `_ZN4juce25ApplicationCommandManager17handleAsyncUpdateEv`
+- `_ZN4juce25ReferenceCountedObjectPtrINS_12AsyncUpdater19AsyncUpdaterMessageEE12decIfNotNullEPS2_`
+- `_ZN4juce27FileSearchPathListComponent13updateButtonsEv`
+- `_ZN4juce5Label28updateFromTextEditorContentsERNS_10TextEditorE`
+- `_ZN4juce5Timer11TimerThread17handleAsyncUpdateEv`
+- `_ZN4juce5Value11ValueSource17handleAsyncUpdateEv`
+- `_ZN4juce6Button11updateStateEbb`
+- `_ZN4juce6Button11updateStateEv`
+- `_ZN4juce6Button22updateAutomaticTooltipERKNS_22ApplicationCommandInfoE`
+- `_ZN4juce6Slider10updateTextEv`
+- `_ZN4juce6Slider5Pimpl10updateTextEv`
+- `_ZN4juce6Slider5Pimpl17handleAsyncUpdateEv`
+- `_ZN4juce7Desktop17handleAsyncUpdateEv`
+- `_ZN4juce7ListBox12ListViewport14updateContentsEv`
+- `_ZN4juce7ListBox13updateContentEv`
+- `_ZN4juce7Toolbar22updateAllItemPositionsEb`
+- `_ZN4juce7Toolbar22updateAllItemPositionsEb.constprop.713`
+- `_ZN4juce7Toolbar22updateAllItemPositionsEb.constprop.714`
+- `_ZN4juce8ComboBox17handleAsyncUpdateEv`
+- `_ZN4juce8TreeView16ContentComponent16updateComponentsEv`
+- `_ZN4juce8TreeView16ContentComponent17handleAsyncUpdateEv`
+- `_ZN4juce8TreeView16ContentComponent22updateButtonUnderMouseERKNS_10MouseEventE`
+- `_ZN4juce8Viewport17updateVisibleAreaEv`
+- `_ZN4juce9PopupMenu13HelperClasses10MenuWindow16updateYPositionsEv`
+- `_ZN4juce9ScrollBar17handleAsyncUpdateEv`
+- `_ZN4juce9ScrollBar19updateThumbPositionEv`
+- `_ZN9CEqButton9isUpdatedEv`
+- `_ZN9CFreeComp13updateGainTabEff`
+- `_ZN9CHomePane17UpdateSetListNameEv`
+- `_ZNK4juce12AsyncUpdater15isUpdatePendingEv`
+- `_ZNK4juce12TableListBox22updateColumnComponentsEv`
+- `_ZNK4juce13PropertyPanel22updatePropHolderLayoutEv`
+- `_ZNK4juce20AnimatedAppComponent30getMillisecondsSinceLastUpdateEv`
+- `_ZNK4juce3MD518getRawChecksumDataEv`
+- `_ZNK4juce9Component17updateMouseCursorEv`
+- `_ZTI27IPrepareForOsUpdateCallback`
+- `_ZTIN4juce12AsyncUpdater19AsyncUpdaterMessageE`
+- `_ZTIN4juce12AsyncUpdaterE`
+- `_ZTS27IPrepareForOsUpdateCallback`
+- `_ZTSN4juce12AsyncUpdater19AsyncUpdaterMessageE`
+- `_ZTSN4juce12AsyncUpdaterE`
+- `_ZTVN4juce12AsyncUpdater19AsyncUpdaterMessageE`
+- `_ZTVN4juce12AsyncUpdaterE`
+- `_ZThn112_N4juce20TableHeaderComponent17handleAsyncUpdateEv`
+- `_ZThn112_N4juce9ScrollBar17handleAsyncUpdateEv`
+- `_ZThn116_N17CSettings_SysPane26PrepareForOsUpdateCallbackEv`
+- `_ZThn116_N4juce8TreeView16ContentComponent17handleAsyncUpdateEv`
+- `_ZThn124_N4juce17FilenameComponent17handleAsyncUpdateEv`
+- `_ZThn128_N4juce17FileListComponent13ItemComponent17handleAsyncUpdateEv`
+- `_ZThn128_N4juce8ComboBox17handleAsyncUpdateEv`
+- `_ZThn20_N4juce19CodeEditorComponent5Pimpl17handleAsyncUpdateEv`
+- `_ZThn212_N4juce22ChildProcessPingThread17handleAsyncUpdateEv`
+- `_ZThn216_N4juce5Timer11TimerThread17handleAsyncUpdateEv`
+- `_ZThn24_N4juce7Desktop17handleAsyncUpdateEv`
+- `_ZThn72_N4juce16FileListTreeItem17handleAsyncUpdateEv`
+- `_ZThn8_N4juce5Value11ValueSource17handleAsyncUpdateEv`
+- `checksum.dat`
+- `e:\os_update.ddd`
+- `e:\os_update_2.ddd`
+- `invalid after png_start_read_image or png_read_update_info`
+- `mimic_checksum_list`
+- `mimic_pro_update`
+- `mimic_software_update`
+- `mimic_software_update_chunk`
+- `ogg_page_checksum_set`
+- `png_read_update_info/png_start_read_image: duplicate call`
+- `png_start_read_image/png_read_update_info: duplicate call`
+- `updater_dataStorage.cpp`
+- `vorbis_synthesis_restart`
+
+## Debug/Test Strings
+
+- `          SSD 5`
+- ` --- START: UART pins test. --- 
+`
+- ` GPIO1_27 -> 0, GPIO1_26 = 0: `
+- ` GPIO1_27 -> 1, GPIO1_26 = 1: `
+- ` GPIO7_09 -> 1, 20 x GPIO7_07 0->1 : GPIO7_08  = 1 : `
+- ` GPIO7_10 -> 1 -> 0, 5 x GPIO7_07 0->1: GPIO7_08  = 0 : `
+- ` GPIO7_10 -> 1 -> 0, GPIO7_09 -> 0, 20 x GPIO7_07 0->1: GPIO7_08  = 0 : `
+- ` Test Failed!`
+- ` Test Passed!`
+- ` test`
+- ` tests`
+- `!!! Test `
+- `### Test FAILED! ###
+`
+- `### Test Passed! ###
+`
+- `- AUDIO OUT TEST START - AUDIO OUT: `
+- `- AUX ADC TEST START - 
+`
+- `- EXT PORT TEST START - 
+`
+- `- HEADPHONES TEST START - 
+`
+- `- MIDI PORT TEST START - 
+`
+- `- TRIG INPUT TEST START - trigger input: `
+- `--- FINISH -  SPI pins test ---
+`
+- `--- FINISH - UART pins test  --- 
+`
+- `--- START - SPI pins test --- 
+`
+- `.debug_abbrev`
+- `.debug_aranges`
+- `.debug_frame`
+- `.debug_info`
+- `.debug_line`
+- `.debug_loc`
+- `.debug_ranges`
+- `.debug_str`
+- `/sys/class/gpio/export`
+- `/sys/class/gpio/gpio%d/direction`
+- `/sys/class/gpio/gpio%d/value`
+- `/sys/class/gpio/gpio190/direction`
+- `/sys/class/gpio/gpio190/value`
+- `/sys/class/gpio/gpio191/direction`
+- `/sys/class/gpio/gpio191/value`
+- `/sys/class/gpio/gpio192/direction`
+- `/sys/class/gpio/gpio192/value`
+- `/sys/class/gpio/gpio197/value`
+- `/sys/class/gpio/gpio215/value`
+- `/sys/class/gpio/gpio29/value`
+- `/sys/class/gpio/gpio93/value`
+- `0 (Fastest)`
+- `1 - FAIL: UART RX should be down. 
+`
+- `11CHWTestPane`
+- `12CTrigMidiTab`
+- `13CMidiTestPane`
+- `14testBtnLAF_red`
+- `15CAuxAdcTestPane`
+- `15CHWTestPaneBase`
+- `15CTrigInTestPane`
+- `16CExtPortTestPane`
+- `16testBtnLAF_green`
+- `17CCaptureXtalkCell`
+- `17CCaptureXtalkPane`
+- `18CAudioOutsTestPane`
+- `18CTrigInTestPane_v2`
+- `18CTrigInputTestPane`
+- `19CExtPortTestPane_v2`
+- `19CHeadphonesTestPane`
+- `2 - FAIL: UART RX should be up. 
+`
+- `23CCaptureTopVelocityPane`
+- `23CTestRegulatorSetupPane`
+- `24CCaptureHatMinMaxPosPane`
+- `25CBlackScreenTestComponent`
+- `27CCaptureXtalkPadProcessPane`
+- `28CDemoLockScreenTestComponent`
+- `28CGradientScreenTestComponent`
+- `3 - FAIL: UART RX should be down. 
+`
+- `31ICaptureTopVelocityHideCallback`
+- `32ICaptureHatMinMaxPosHideCallback`
+- `All tests completed successfully`
+- `Assigned Midi Channel / Note`
+- `Audio Out Test`
+- `AudioOutTest.cpp`
+- `Bell Input Gain Controls Bell Velocity Level Detection, Actual Triggering Is Controlled By Bow-Piezo Settings.`
+- `Black Screen Test (tap on screen to exit)`
+- `CAPTURE CROSSTALK`
+- `Capture Closed/Open Position`
+- `Capture Top Velocity`
+- `Capture Trigger Input`
+- `Contact Pearl Support To Replace SSD! `
+- `DACTest.cpp`
+- `Dump Raw Midi To Usb`
+- `EDrumTriggerEng2.cpp`
+- `Export Captured Trigger Data to USB Stick`
+- `ExtPortTest.cpp`
+- `ExtPortTest_v2.cpp`
+- `FLAC__StreamDecoderStateString`
+- `FLAC__StreamDecoderWriteStatusString`
+- `FLAC__StreamEncoderStateString`
+- `FLAC__StreamEncoderWriteStatusString`
+- `GPIO7_08 = 0 - FAIL!
+`
+- `GPIO7_08 = 0 - OK!
+`
+- `GPIO7_08 = 1 - FAIL!
+`
+- `GPIO7_08 = 1 - OK!
+`
+- `Generate Test Tone On All Outputs`
+- `Generate Test Tone On All Outputs (+4dbu)`
+- `Generate Test Tone On All Outputs (Maximum amplitude)`
+- `Gradient Filled Screen Test (tap on screen to exit)`
+- `HW TEST`
+- `MIDI IN`
+- `MIDI PAD 1`
+- `MIDI PAD 2`
+- `MIDI PAD 3`
+- `MIDI PAD 4`
+- `MIDI PAD 5`
+- `MIDI PAD 6`
+- `MIDI PAD 7`
+- `MIDI PAD 8`
+- `Midi`
+- `Midi In Channel`
+- `Midi In Channel / Note`
+- `Midi In Note`
+- `Midi Kit Switch: Switching To Set Lits Kit Number `
+- `Midi Learn`
+- `Midi Out Channel`
+- `Midi Out Channel / Note`
+- `Midi Out Note`
+- `Midi Pad (5 zone)`
+- `MidiPitchFraction`
+- `MidiUnityNote`
+- `Movie/video screen capture`
+- `N4juce14UnitTestRunnerE`
+- `N4juce8UnitTestE`
+- `Retrigger Cancel`
+- `Rim Input Gain Controls Rim Velocity Level Detection, Actual Triggering Is Controlled By Center-Piezo Settings.`
+- `Run All Tests`
+- `SELECT TRIGGER PRESET GROUP`
+- `SSD 5`
+- `SSD WRITE TEST`
+- `START CAPTURE`
+- `START CAPTURE: HEAD/BOW`
+- `START CAPTURE: RIM`
+- `Save Test Log To Usb Stick`
+- `Save Trigger Preset as `
+- `Select Pad To Capture XTalk To Other Pads`
+- `Select Trigger Input`
+- `Select Trigger Pad Preset`
+- `Set input gain as low as possible but enough to catch your ghost notes. Then use "Capture Top Velocity" to dial proper dynamics.`
+- `Side Trigger(Dual Piezo)`
+- `Simulate Trigger`
+- `Starting test: `
+- `TEST`
+- `TRIGGER`
+- `Test`
+- `Test #1 
+`
+- `Test #2 
+`
+- `Test #3 
+`
+- `Test #4 
+`
+- `Test #5 
+`
+- `Test Aux Adc (old)`
+- `Test Ext Port (old)`
+- `Test Ext Port V2`
+- `Test Failed`
+- `Test Headphones Amp (old)`
+- `Test Midi I/O`
+- `Test Passed`
+- `Test Trigger Inputs (old)`
+- `Test Trigger Inputs - V2`
+- `TrigDataCapture`
+- `TrigDataCapture.cpp`
+- `TrigInputTest.cpp`
+- `TrigInputTest_v2.cpp`
+- `Trigger`
+- `Trigger All Inputs^`
+- `Trigger Pad Preset`
+- `Trigger Prst`
+- `USE THIS ONLY FOR SPECIAL CASES
+ PLEASE USE "CAPTURE TOP VELOCITY" WIZARD FOR EVERY PAD ZONE TO DIAL PROPER RESPONSE 
+ TAP TO UNLOCK`
+- `You Need To Enable The Set List For Midi Kit Switch`
+- `_GLOBAL__sub_I__ZN11CHWTestPaneC2EP10CUIDataMgrP9CMainPane`
+- `_GLOBAL__sub_I__ZN12CExtPortTestC2Ev`
+- `_GLOBAL__sub_I__ZN12CTrigMidiTabC2EP10CUIDataMgrP9CMainPane`
+- `_GLOBAL__sub_I__ZN13CAudioOutTestC2EP10CUIDataMgri13eAudioOutType`
+- `_GLOBAL__sub_I__ZN13CMidiTestPaneC2EP10CUIDataMgrP9CMainPane`
+- `_GLOBAL__sub_I__ZN14CSamplerEngineC2EP15CTriggerEngine2P24CVoiceItemBuffersStorage`
+- `_GLOBAL__sub_I__ZN14CTrigInputTestC2EP10CUIDataMgrii14eTrigInputType`
+- `_GLOBAL__sub_I__ZN15CAuxAdcTestPaneC2EP10CUIDataMgrP9CMainPane`
+- `_GLOBAL__sub_I__ZN15CExtPortTest_v2C2Ev`
+- `_GLOBAL__sub_I__ZN15CMimicDebugInfoC2EP10CUIDataMgr`
+- `_GLOBAL__sub_I__ZN15CTrigInTestPaneC2EP10CUIDataMgrP9CMainPane`
+- `_GLOBAL__sub_I__ZN15CTriggerEngine2C2EP17CDirectoryManagerP18CSettingStorageMgrP21CCommonSettingsHolder`
+- `_GLOBAL__sub_I__ZN16CDataCompression12testCompressEPiiRi`
+- `_GLOBAL__sub_I__ZN16CExtPortTestPaneC2EP10CUIDataMgrP9CMainPane`
+- `_GLOBAL__sub_I__ZN16CTrigDataCaptureC2EP13CEDrumEngine2`
+- `_GLOBAL__sub_I__ZN17CCaptureXtalkCellC2EP17CCaptureXtalkPaneP10CUIDataMgri`
+- `_GLOBAL__sub_I__ZN17CCaptureXtalkPaneC2EP10CUIDataMgrP9CMainPane`
+- `_GLOBAL__sub_I__ZN17CTrigInputTest_v2C2EP10CUIDataMgrii14eTrigInputType`
+- `_GLOBAL__sub_I__ZN17MidiReceiveThreadC2Ev`
+- `_GLOBAL__sub_I__ZN18CAudioOutsTestPaneC2EP10CUIDataMgrP9CMainPane`
+- `_GLOBAL__sub_I__ZN18CTrigInTestPane_v2C2EP10CUIDataMgrP9CMainPane`
+- `_GLOBAL__sub_I__ZN18CTrigInputTestPaneC2EP10CUIDataMgr`
+- `_GLOBAL__sub_I__ZN19CExtPortTestPane_v2C2EP10CUIDataMgrP9CMainPane`
+- `_GLOBAL__sub_I__ZN19CHeadphonesTestPaneC2EP10CUIDataMgrP9CMainPane`
+- `_GLOBAL__sub_I__ZN23CCaptureTopVelocityPaneC2EP10CUIDataMgrP31ICaptureTopVelocityHideCallback`
+- `_GLOBAL__sub_I__ZN23CTestRegulatorSetupPaneC2EP10CUIDataMgr`
+- `_GLOBAL__sub_I__ZN24CCaptureHatMinMaxPosPaneC2EP10CUIDataMgrP32ICaptureHatMinMaxPosHideCallback`
+- `_GLOBAL__sub_I__ZN27CCaptureXtalkPadProcessPaneC2EP10CUIDataMgrP17CCaptureXtalkPane`
+- `_Z10_gpio_highi`
+- `_Z10_gpio_openi`
+- `_Z12gpio_mode_ini`
+- `_Z13_gpio_mode_ini`
+- `_Z13gpio_mode_outi`
+- `_Z14_gpio_mode_outi`
+- `_Z14gpio_directioniPKc`
+- `_Z14gpio_get_valuei`
+- `_Z14gpio_set_valueic`
+- `_Z15_gpio_directioniPKc`
+- `_Z15_gpio_get_valuei`
+- `_Z15_gpio_set_valueic`
+- `_Z15gpio_level_namec`
+- `_Z16_gpio_level_namec`
+- `_Z7fn_gpioPKcbb`
+- `_Z8gpio_lowi`
+- `_Z9_gpio_lowi`
+- `_Z9gpio_highi`
+- `_Z9gpio_openi`
+- `_ZGVZN4juce8UnitTest11getAllTestsEvE5tests`
+- `_ZN10CInfoPopup7hitTestEii`
+- `_ZN10CMidiInOut4ReadER10CEDMidiCmd`
+- `_ZN10CMidiInOut5WriteE10CEDMidiCmd`
+- `_ZN10CMidiInOutC1Ev`
+- `_ZN10CMidiInOutC2Ev`
+- `_ZN10CMidiInOutD1Ev`
+- `_ZN10CMidiInOutD2Ev`
+- `_ZN10CRegulator10WriteStateEv`
+- `_ZN10moodycamel17ReaderWriterQueueI10CEDMidiCmdLj512EEC2Ej.part.5`
+- `_ZN10moodycamel17ReaderWriterQueueI10CEDMidiCmdLj512EED1Ev`
+- `_ZN10moodycamel17ReaderWriterQueueI10CEDMidiCmdLj512EED2Ev`
+- `_ZN11CCurrentKit7hitTestEii`
+- `_ZN11CEAuxInGate11ProcessDataEPf`
+- `_ZN11CHWTestPane13buttonClickedEPN4juce6ButtonE`
+- `_ZN11CHWTestPane13timerCallbackEv`
+- `_ZN11CHWTestPane15doAutotestCycleEP15CHWTestPaneBasePN4juce10TextButtonE`
+- `_ZN11CHWTestPane5paintERN4juce8GraphicsE`
+- `_ZN11CHWTestPane6ReloadEv`
+- `_ZN11CHWTestPane7resizedEv`
+- `_ZN11CHWTestPane9updateBtnEP15CHWTestPaneBasePN4juce10TextButtonE`
+- `_ZN11CHWTestPaneC1EP10CUIDataMgrP9CMainPane`
+- `_ZN11CHWTestPaneC2EP10CUIDataMgrP9CMainPane`
+- `_ZN11CHWTestPaneD0Ev`
+- `_ZN11CHWTestPaneD1Ev`
+- `_ZN11CHWTestPaneD2Ev`
+- `_ZN11CMidiPortHW10setup_portEi`
+- `_ZN11CMidiPortHW10write_dataEPhi`
+- `_ZN11CMidiPortHW15read_data_arrayEPhi`
+- `_ZN11CMidiPortHW9read_dataERh`
+- `_ZN11CMidiPortHWC1Ev`
+
+## Most Represented Notable Classes
+
+- `juce`: 711 symbols
+- `CTrigPadPresetStorage`: 82 symbols
+- `CMixerEngine`: 80 symbols
+- `CDataStorage`: 43 symbols
+- `CInstrumentSlot`: 42 symbols
+- `CMixerStripDescriptor`: 39 symbols
+- `CDirectoryManager`: 35 symbols
+- `CTrigPadDescriptor`: 35 symbols
+- `CInstrumentData`: 31 symbols
+- `CInstrumentStorage`: 29 symbols
+- `CInstrumentLoader`: 28 symbols
+- `CPlayerManager`: 28 symbols
+- `CRecordManager`: 23 symbols
+- `CDiskStreamer`: 22 symbols
+- `CMixerPane`: 21 symbols
+- `CSamplerEngine`: 20 symbols
+- `CTrigCurvesTab`: 19 symbols
+- `CTrigPadStorage`: 19 symbols
+- `std`: 19 symbols
+- `CMixerStrip`: 18 symbols
+- `CTrigMidiTab`: 18 symbols
+- `CTrigMainPane`: 17 symbols
+- `CUISettingsHolder`: 16 symbols
+- `CUpdaterDataStorage`: 16 symbols
+- `CTrigZoneTab`: 15 symbols
+- `CAssignInstrumentPane`: 14 symbols
+- `CEDrumEngine2`: 14 symbols
+- `CExtPortTestPane`: 14 symbols
+- `CExtPortTestPane_v2`: 14 symbols
+- `CMimicDebugInfo`: 14 symbols
+- `CSettings_SysPane`: 14 symbols
+- `CTrigPiezoTab`: 14 symbols
+- `CTrigXTalkTab`: 14 symbols
+- `CTriggerEngine2`: 14 symbols
+- `CMixerFxPane`: 13 symbols
+- `CRecorderDataSource`: 13 symbols
+- `CRecorderMainPane`: 13 symbols
+- `CRegulator`: 13 symbols
+- `CTrigSwitchTab`: 13 symbols
+- `CCaptureHatMinMaxPosPane`: 12 symbols
+- `CDirectOutMixer_cellPane`: 12 symbols
+- `CMainPane`: 12 symbols
+- `CMidiTestPane`: 12 symbols
+- `CMixerModPane`: 12 symbols
+- `CMixerStripEditPane`: 12 symbols
+- `CRecorderGridPane`: 12 symbols
+- `CRecorderTrackTablePane`: 12 symbols
+- `CSettingStorageMgr`: 12 symbols
+- `CSettings_BackupPane`: 12 symbols
+- `CSettings_FilesPane`: 12 symbols
+- `CTrigHHPosTab`: 12 symbols
+- `CAudioOutsTestPane`: 11 symbols
+- `CCaptureTopVelocityPane`: 11 symbols
+- `CCaptureXtalkPadProcessPane`: 11 symbols
+- `CInstrumentLibStorage`: 11 symbols
+- `CRegulatorSetupPane_piezo`: 11 symbols
+- `CTrigHHSettings`: 11 symbols
+- `CTrigInTestPane_v2`: 11 symbols
+- `CTrigZoneVeloTab`: 11 symbols
+- `CTrigZoneVolTab`: 11 symbols
+- `CTriggerPadBase`: 11 symbols
+- `AudioFileReader`: 10 symbols
+- `CCaptureXtalkPane`: 10 symbols
+- `CEdrumsApp`: 10 symbols
+- `CRecorderTrackPane`: 10 symbols
+- `CTrigDataCapture`: 10 symbols
+- `CTrigInputTest_v2`: 10 symbols
+- `CTrigMeter`: 10 symbols
+- `CTrigSignalStrip`: 10 symbols
+- `CAudioOutTest`: 9 symbols
+- `CHWTestPane`: 9 symbols
+- `CPlayerPositionBigPane`: 9 symbols
+- `CPlayerPositionSmallPane`: 9 symbols
+- `CTrigGlobalSettingsPane`: 9 symbols
+- `CTrigInTestPane`: 9 symbols
+- `CTrigInputTest`: 9 symbols
+- `CTrigInputTestPane`: 9 symbols
+- `CCaptureXtalkCell`: 8 symbols
+- `CDirectOutMixerPane`: 8 symbols
+- `CDirectOutMixer_cellHolderPane`: 8 symbols
+- `CInstrumentSlotDescriptor`: 8 symbols
+- `CMixerEtcPane`: 8 symbols
+- `CMixerFxPaneHolder`: 8 symbols
+- `CMixerFxPaneKit`: 8 symbols
+- `CMixerModPaneHolder`: 8 symbols
+- `CRegulatorSetupPane`: 8 symbols
+- `CSettingsPane`: 8 symbols
+- `CSettings_UISetupTopBar`: 8 symbols
+- `CTestRegulatorSetupPane`: 8 symbols
+- `CTrigEmptyTab`: 8 symbols
+- `CTrigSetupTab`: 8 symbols
+- `CTrigSimPane`: 8 symbols
+- `bigPanePlayerBtnLAF`: 8 symbols
+- `CMixerFxPaneHP`: 7 symbols
+- `CMixerFxPaneMaster`: 7 symbols
+- `CMixerMicPane`: 7 symbols
+- `CMixerMicPaneHolder`: 7 symbols
+- `CMixerReverbPane`: 7 symbols
+- `CPlayerPaneSmall`: 7 symbols
+- `CSettings_DevPane`: 7 symbols
+- `CSettings_ScreenSaver`: 7 symbols
+- `CSettings_UIPane`: 7 symbols
+- `CSettings_instLayoutGlobalSettingsPane`: 7 symbols
+- `CTrigProcessor`: 7 symbols
+- `CTrigSim`: 7 symbols
+- `CVolumeSettingsHolder`: 7 symbols
+- `AudioFileWriter_16Channel`: 6 symbols
+- `CHatCtrl`: 6 symbols
+- `CHatCtrlTab`: 6 symbols
+- `CMidiPortHW`: 6 symbols
+- `CMixerSettingsPane`: 6 symbols
+- `CRecorderSetupPane`: 6 symbols
+- `CXtalkManager`: 6 symbols
+- `CFileUtils`: 5 symbols
+- `CMixerEmptyPane`: 5 symbols
+- `CPlayerPositionBigOverlay`: 5 symbols
+- `CPlayerPositionOverlay`: 5 symbols
+- `MidiReceiveThread`: 5 symbols
+- `MidiSendThread`: 5 symbols
+- `dirOutMixerSliderLAF`: 5 symbols
+
+## Notable Symbols
+
+- `AudioFileReader::AudioFileReader()`
+- `AudioFileReader::GetCurrentFramePos()`
+- `AudioFileReader::GetLenghtInFrames()`
+- `AudioFileReader::GetPlaybackSpeed()`
+- `AudioFileReader::SetCurrentFramePos(long long)`
+- `AudioFileReader::SetPlaybackSpeed(float)`
+- `AudioFileReader::mixDataToBuffer(float*, float*, float, float*, float*, float, int, int, int, int, bool)`
+- `AudioFileReader::startReading(juce::File const&)`
+- `AudioFileReader::stop()`
+- `AudioFileReader::~AudioFileReader()`
+- `AudioFileWriter_16Channel::AudioFileWriter_16Channel()`
+- `AudioFileWriter_16Channel::isRecording() const`
+- `AudioFileWriter_16Channel::recordDataCallback(float const**, int, int)`
+- `AudioFileWriter_16Channel::startRecording(juce::File const&)`
+- `AudioFileWriter_16Channel::stop()`
+- `AudioFileWriter_16Channel::~AudioFileWriter_16Channel()`
+- `AudioOutTest.cpp`
+- `Biquad::LoadState(CDataStorage&, CEString const&)`
+- `Biquad::SaveState(CDataStorage&, CEString const&)`
+- `CAlgoReverb::LoadState(CDataStorage&, CEString const&)`
+- `CAlgoReverb::SaveState(CDataStorage&, CEString const&)`
+- `CAssignInstrumentPane::CAssignInstrumentPane(CUIDataMgr*, CMainPane*)`
+- `CAssignInstrumentPane::OnPopupMenuSelected(CPopupMenu*)`
+- `CAssignInstrumentPane::OnTimer()`
+- `CAssignInstrumentPane::Reload()`
+- `CAssignInstrumentPane::Reload(int)`
+- `CAssignInstrumentPane::addButton(juce::TextButton**, char const*, int)`
+- `CAssignInstrumentPane::buttonClicked(juce::Button*)`
+- `CAssignInstrumentPane::fillInstArtCombo()`
+- `CAssignInstrumentPane::fillInstDescCombo()`
+- `CAssignInstrumentPane::fillTab()`
+- `CAssignInstrumentPane::fillTrigInputButtons()`
+- `CAssignInstrumentPane::paint(juce::Graphics&)`
+- `CAssignInstrumentPane::resized()`
+- `CAssignInstrumentPane::~CAssignInstrumentPane()`
+- `CAudioOutTest::CAudioOutTest(CUIDataMgr*, int, eAudioOutType)`
+- `CAudioOutTest::MakeStep(CEString&)`
+- `CAudioOutTest::PrepareStart()`
+- `CAudioOutTest::checkLevels(int, int, int, juce::String&)`
+- `CAudioOutTest::doTest(bool, int, ePadInput_impedance, ePadInput_amp, ePadInput_dc_decouple, int, int, juce::String&)`
+- `CAudioOutTest::doTest2(float, int, float, int, int, juce::String&)`
+- `CAudioOutTest::dummyTest(CEString&)`
+- `CAudioOutTest::hpOutTestStep(CEString&)`
+- `CAudioOutTest::lineOutTestStep(CEString&)`
+- `CAudioOutsTestPane::CAudioOutsTestPane(CUIDataMgr*, CMainPane*)`
+- `CAudioOutsTestPane::Reload()`
+- `CAudioOutsTestPane::StartTestExternal()`
+- `CAudioOutsTestPane::StopTestExternal()`
+- `CAudioOutsTestPane::buttonClicked(juce::Button*)`
+- `CAudioOutsTestPane::createButton(char const*)`
+- `CAudioOutsTestPane::paint(juce::Graphics&)`
+- `CAudioOutsTestPane::putText(char const*)`
+- `CAudioOutsTestPane::resized()`
+- `CAudioOutsTestPane::timerCallback()`
+- `CAudioOutsTestPane::~CAudioOutsTestPane()`
+- `CCaptureHatMinMaxPosPane::CCaptureHatMinMaxPosPane(CUIDataMgr*, ICaptureHatMinMaxPosHideCallback*)`
+- `CCaptureHatMinMaxPosPane::Hide()`
+- `CCaptureHatMinMaxPosPane::Show(int, int)`
+- `CCaptureHatMinMaxPosPane::addButton(juce::TextButton**, char const*, int)`
+- `CCaptureHatMinMaxPosPane::buttonClicked(juce::Button*)`
+- `CCaptureHatMinMaxPosPane::fillData()`
+- `CCaptureHatMinMaxPosPane::paint(juce::Graphics&)`
+- `CCaptureHatMinMaxPosPane::resized()`
+- `CCaptureHatMinMaxPosPane::setCompVisibility()`
+- `CCaptureHatMinMaxPosPane::sliderValueChanged(juce::Slider*)`
+- `CCaptureHatMinMaxPosPane::timerCallback()`
+- `CCaptureHatMinMaxPosPane::~CCaptureHatMinMaxPosPane()`
+- `CCaptureTopVelocityPane::CCaptureTopVelocityPane(CUIDataMgr*, ICaptureTopVelocityHideCallback*)`
+- `CCaptureTopVelocityPane::Hide()`
+- `CCaptureTopVelocityPane::Show(int, int)`
+- `CCaptureTopVelocityPane::addButton(juce::TextButton**, char const*, int)`
+- `CCaptureTopVelocityPane::buttonClicked(juce::Button*)`
+- `CCaptureTopVelocityPane::fillData()`
+- `CCaptureTopVelocityPane::paint(juce::Graphics&)`
+- `CCaptureTopVelocityPane::resized()`
+- `CCaptureTopVelocityPane::sliderValueChanged(juce::Slider*)`
+- `CCaptureTopVelocityPane::timerCallback()`
+- `CCaptureTopVelocityPane::~CCaptureTopVelocityPane()`
+- `CCaptureXtalkCell::CCaptureXtalkCell(CCaptureXtalkPane*, CUIDataMgr*, int)`
+- `CCaptureXtalkCell::Reload()`
+- `CCaptureXtalkCell::buttonClicked(juce::Button*)`
+- `CCaptureXtalkCell::mouseDown(juce::MouseEvent const&)`
+- `CCaptureXtalkCell::paint(juce::Graphics&)`
+- `CCaptureXtalkCell::resized()`
+- `CCaptureXtalkCell::timerCallback()`
+- `CCaptureXtalkCell::~CCaptureXtalkCell()`
+- `CCaptureXtalkPadProcessPane::CCaptureXtalkPadProcessPane(CUIDataMgr*, CCaptureXtalkPane*)`
+- `CCaptureXtalkPadProcessPane::Reload(int)`
+- `CCaptureXtalkPadProcessPane::buttonClicked(juce::Button*)`
+- `CCaptureXtalkPadProcessPane::cancelCapture()`
+- `CCaptureXtalkPadProcessPane::paint(juce::Graphics&)`
+- `CCaptureXtalkPadProcessPane::resized()`
+- `CCaptureXtalkPadProcessPane::startCapture(int)`
+- `CCaptureXtalkPadProcessPane::stopAndSaveCapture()`
+- `CCaptureXtalkPadProcessPane::timerCallback()`
+- `CCaptureXtalkPadProcessPane::updateCaptureBtns()`
+- `CCaptureXtalkPadProcessPane::~CCaptureXtalkPadProcessPane()`
+- `CCaptureXtalkPane::CCaptureXtalkPane(CUIDataMgr*, CMainPane*)`
+- `CCaptureXtalkPane::OnCellClicked(int, bool)`
+- `CCaptureXtalkPane::Reload()`
+- `CCaptureXtalkPane::build()`
+- `CCaptureXtalkPane::buttonClicked(juce::Button*)`
+- `CCaptureXtalkPane::clear()`
+- `CCaptureXtalkPane::paint(juce::Graphics&)`
+- `CCaptureXtalkPane::resized()`
+- `CCaptureXtalkPane::timerCallback()`
+- `CCaptureXtalkPane::~CCaptureXtalkPane()`
+- `CCommonSettingsHolder::CCommonSettingsHolder(CEDrumEngine2*)`
+- `CCommonSettingsHolder::LoadState()`
+- `CCommonSettingsHolder::SaveState()`
+- `CCommonSettingsHolder::save()`
+- `CCompPane::CCompPane(CMixerEngine*, eCompPaneMode, CMainPane*)`
+- `CCompPane::userChangedSettings()`
+- `CCompressedDatasource::GetFileReadOffsetAndUpdate()`
+- `CCompressedDatasource::UpdateAfterRead(int)`
+- `CCompressedDatasource::UpdateCompDataSize(int)`
+- `CCurvePane::UpdateCurveTrace()`
+- `CDRmConverter::CDRmConverter(CSamplerEngine*, CDiskStreamer*)`
+- `CDataStorage::AddImageAsByteArray(void const*, int)`
+- `CDataStorage::AddValue(CEString const&, CEString const&)`
+- `CDataStorage::AddValue(CEString const&, bool const&)`
+- `CDataStorage::AddValue(CEString const&, bool const*, int)`
+- `CDataStorage::AddValue(CEString const&, float const&)`
+- `CDataStorage::AddValue(CEString const&, float const*, int)`
+- `CDataStorage::AddValue(CEString const&, int const&)`
+- `CDataStorage::AddValue(CEString const&, int const*, int)`
+- `CDataStorage::CDataStorage()`
+- `CDataStorage::LoadFromFile(char const*)`
+- `CDataStorage::ReplaceValue(CEString const&, float const&)`
+- `CDataStorage::ReplyBoolValue(CEString const&, bool&)`
+- `CDataStorage::ReplyBoolValue(CEString const&, bool*, int)`
+- `CDataStorage::ReplyFilePosAfterRead()`
+- `CDataStorage::ReplyFloatValue(CEString const&, float&)`
+- `CDataStorage::ReplyFloatValue(CEString const&, float*, int)`
+- `CDataStorage::ReplyImageAsByteArray(unsigned char**, int&)`
+- `CDataStorage::ReplyIntValue(CEString const&, int&)`
+- `CDataStorage::ReplyIntValue(CEString const&, int*, int)`
+- `CDataStorage::ReplyStringValue(CEString const&, CEString&)`
+- `CDataStorage::SaveToFile(char const*)`
+- `CDataStorage::loadBoolArrayData(unsigned char*, unsigned int&)`
+- `CDataStorage::loadBoolData(unsigned char*, unsigned int&)`
+- `CDataStorage::loadFloatArrayData(unsigned char*, unsigned int&)`
+- `CDataStorage::loadFloatData(unsigned char*, unsigned int&)`
+- `CDataStorage::loadFromCompressedFile(char const*)`
+- `CDataStorage::loadImageData(unsigned char*, unsigned int&)`
+- `CDataStorage::loadIntArrayData(unsigned char*, unsigned int&)`
+- `CDataStorage::loadIntData(unsigned char*, unsigned int&)`
+- `CDataStorage::loadStringData(unsigned char*, unsigned int&)`
+- `CDataStorage::memoryRead(void*, int, unsigned char*, unsigned int&)`
+- `CDataStorage::memoryWrite(void*, int, unsigned char*, unsigned int&)`
+- `CDataStorage::readStringFromFile(unsigned char*, unsigned int&, CEString&)`
+- `CDataStorage::saveBoolArrayData(unsigned char*, unsigned int&)`
+- `CDataStorage::saveBoolData(unsigned char*, unsigned int&)`
+- `CDataStorage::saveFloatArrayData(unsigned char*, unsigned int&)`
+- `CDataStorage::saveFloatData(unsigned char*, unsigned int&)`
+- `CDataStorage::saveImageData(unsigned char*, unsigned int&)`
+- `CDataStorage::saveIntArrayData(unsigned char*, unsigned int&)`
+- `CDataStorage::saveIntData(unsigned char*, unsigned int&)`
+- `CDataStorage::saveStringData(unsigned char*, unsigned int&)`
+- `CDataStorage::writeStringToFile(unsigned char*, unsigned int&, CEString const&)`
+- `CDataStorage::~CDataStorage()`
+- `CDecompressedDataSource::CDecompressedDataSource(CDiskStreamer*, int)`
+- `CDirectOutMixerPane::CDirectOutMixerPane(CUIDataMgr*)`
+- `CDirectOutMixerPane::Reload()`
+- `CDirectOutMixerPane::buttonClicked(juce::Button*)`
+- `CDirectOutMixerPane::comboBoxChanged(juce::ComboBox*)`
+- `CDirectOutMixerPane::fillTab()`
+- `CDirectOutMixerPane::paint(juce::Graphics&)`
+- `CDirectOutMixerPane::resized()`
+- `CDirectOutMixerPane::~CDirectOutMixerPane()`
+- `CDirectOutMixer_cellHolderPane::CDirectOutMixer_cellHolderPane(CUIDataMgr*)`
+- `CDirectOutMixer_cellHolderPane::Reload()`
+- `CDirectOutMixer_cellHolderPane::buttonClicked(juce::Button*)`
+- `CDirectOutMixer_cellHolderPane::fillTab()`
+- `CDirectOutMixer_cellHolderPane::getPaneH()`
+- `CDirectOutMixer_cellHolderPane::paint(juce::Graphics&)`
+- `CDirectOutMixer_cellHolderPane::resized()`
+- `CDirectOutMixer_cellHolderPane::~CDirectOutMixer_cellHolderPane()`
+- `CDirectOutMixer_cellPane::CDirectOutMixer_cellPane(int, CUIDataMgr*, eDirectOutMixerCellType)`
+- `CDirectOutMixer_cellPane::IsSlotEnabled()`
+- `CDirectOutMixer_cellPane::Reload()`
+- `CDirectOutMixer_cellPane::ReplyInstrumentType()`
+- `CDirectOutMixer_cellPane::buttonClicked(juce::Button*)`
+- `CDirectOutMixer_cellPane::fillTab()`
+- `CDirectOutMixer_cellPane::getInstType()`
+- `CDirectOutMixer_cellPane::paint(juce::Graphics&)`
+- `CDirectOutMixer_cellPane::replyLineOutRouteText(eLineOutEnum)`
+- `CDirectOutMixer_cellPane::resized()`
+- `CDirectOutMixer_cellPane::sliderValueChanged(juce::Slider*)`
+- `CDirectOutMixer_cellPane::~CDirectOutMixer_cellPane()`
+- `CDirectoryManager::CDirectoryManager()`
+- `CDirectoryManager::CheckIfSDCardMounted(bool)`
+- `CDirectoryManager::CheckIfUSBFlashMounted(bool)`
+- `CDirectoryManager::CheckIfUSBorSDCardMounted(bool)`
+- `CDirectoryManager::ReplyAppNameFileName()`
+- `CDirectoryManager::ReplyAppRootDir()`
+- `CDirectoryManager::ReplyAppUpdateNameFileName()`
+- `CDirectoryManager::ReplyCommonSettingsStateFilename()`
+- `CDirectoryManager::ReplyCurrKitNameStateFilename()`
+- `CDirectoryManager::ReplyCurrSongPlayListFilename()`
+- `CDirectoryManager::ReplyFactoryKitDir()`
+- `CDirectoryManager::ReplyInstStorageLayoutFilename()`
+- `CDirectoryManager::ReplyInstStorageStateFilename()`
+- `CDirectoryManager::ReplyInstrumentDataDir()`
+- `CDirectoryManager::ReplyMetrSettingsFileName()`
+- `CDirectoryManager::ReplyMixerStripsVolumesStateFilename()`
+- `CDirectoryManager::ReplyPadPresetDir()`
+- `CDirectoryManager::ReplyPadStorageStateFilename()`
+- `CDirectoryManager::ReplyPhonesAndAuxVolumeStateFilename()`
+- `CDirectoryManager::ReplyPhonesMixerStateFilename()`
+- `CDirectoryManager::ReplyRecMgrSettingsFileName()`
+- `CDirectoryManager::ReplyRootSettingsDir()`
+- `CDirectoryManager::ReplySDDir()`
+- `CDirectoryManager::ReplySettingsDir()`
+- `CDirectoryManager::ReplyTestLogFileName()`
+- `CDirectoryManager::ReplyTrigDataDir()`
+- `CDirectoryManager::ReplyUISettingsFileName()`
+- `CDirectoryManager::ReplyUSBDir()`
+- `CDirectoryManager::ReplyUserInstrumentPresetDir()`
+- `CDirectoryManager::ReplyUserKitDir()`
+- `CDirectoryManager::ReplyUserSetListDir()`
+- `CDirectoryManager::ReplyUserWaveDir()`
+- `CDirectoryManager::ReplyVeloPresetDir()`
+- `CDirectoryManager::ReplyVolumeSettingsStateFilename()`
+- `CDirectoryManager::ReplyXtalkStateFilename()`
+- `CDiskStreamer::CDiskStreamer()`
+- `CDiskStreamer::CleanupSoutceFilesForSlot(int, CEString*, int)`
+- `CDiskStreamer::GetBytesRead()`
+- `CDiskStreamer::GetMaxDiskReadTime()`
+- `CDiskStreamer::GetNumDiskReadErrors()`
+- `CDiskStreamer::GetNumErrors()`
+- `CDiskStreamer::IncNumErrors(unsigned int)`
+- `CDiskStreamer::RegisterNewInstrument(int, char const*)`
+- `CDiskStreamer::RequestBufferDecompression(CMemBuf*, CCompressedDatasource*)`
+- `CDiskStreamer::RequestBufferRead(CMemBuf*, CCompressedDatasource*, bool)`
+- `CDiskStreamer::RequestNewData(CMemBuf*, CCompressedDatasource*, CVoiceItem&)`
+- `CDiskStreamer::StreamerDataBufferDecompressCallback()`
+- `CDiskStreamer::StreamerDataBufferLoadCallback()`
+- `CDiskStreamer::doDecomp(CMemBuf*, CCompressedDatasource*, bool&)`
+- `CDiskStreamer::doDecompJobs(CNewDataRequest&)`
+- `CDiskStreamer::doDecompJobs(CNewDataRequest&)::decCnt`
+- `CDiskStreamer::doDecomp_wave(CMemBuf*, CCompressedDatasource*, bool&)`
+- `CDiskStreamer::processDecompRequests()`
+- `CDiskStreamer::processNewDataReqFifo()`
+- `CDiskStreamer::streamDataFromDisk()`
+- `CDiskStreamer::streamDataFromDisk()::readCnt`
+- `CDiskStreamer::~CDiskStreamer()`
+- `CEDrumEngine2::CheckIfThisInstrumentPresetNameAlreadyExist(CEString&, CEString&)`
+- `CEDrumEngine2::DoRecord(float*)`
+- `CEDrumEngine2::OnSingleInstrumentLoaded()`
+- `CEDrumEngine2::PlayerDataBufferLoadCallback()`
+- `CEDrumEngine2::ReceiveMidi()`
+- `CEDrumEngine2::RenderPlayer()`
+- `CEDrumEngine2::RequestStopAudioDrivers()`
+- `CEDrumEngine2::RequestUIMixerStrimMicPaneReload()`
+- `CEDrumEngine2::SaveInstrumentPreset(CEString&, CEString&, int, int, bool)`
+- `CEDrumEngine2::SendMidi()`
+- `CEDrumEngine2::SendMidi() (.part.10)`
+- `CEDrumEngine2::SimulateTrigger()`
+- `CEDrumEngine2::SwitchKitFromSetListByMidiProgramChange(int)`
+- `CEDrumEngine2::TriggerSweepSine()`
+- `CEdrumsApp::AudioRenderCallback(unsigned int*, int, int, float*, int, int, int, int, int, int)`
+- `CEdrumsApp::CEdrumsApp()`
+- `CEdrumsApp::DataDecompresssionCallback()`
+- `CEdrumsApp::DiskReaderCallback()`
+- `CEdrumsApp::IsAudioDriversStopRequested()`
+- `CEdrumsApp::PlayerDiskReaderCallback()`
+- `CEdrumsApp::RequestStopDrivers()`
+- `CEdrumsApp::createDirs()`
+- `CEdrumsApp::readOsVersionFiles()`
+- `CEdrumsApp::~CEdrumsApp()`
+- `CEncoderData::CEncoderData()`
+- `CEncoderData::UpdateState()`
+- `CEqButton::isUpdated()`
+- `CEqPane::CEqPane(CMixerEngine*, eEqPaneMode)`
+- `CExtPortControl::CExtPortControl()`
+- `CExtPortControl::Enable_12volt(bool)`
+- `CExtPortControl::gpioFunc(char const*, bool, bool)`
+- `CExtPortTest::CExtPortTest()`
+- `CExtPortTest::Test(juce::String&)`
+- `CExtPortTest::allPinsDown()`
+- `CExtPortTest::allPinsUp()`
+- `CExtPortTestPane::CExtPortTestPane(CUIDataMgr*, CMainPane*)`
+- `CExtPortTestPane::Reload()`
+- `CExtPortTestPane::StartTestExternal()`
+- `CExtPortTestPane::StopTestExternal()`
+- `CExtPortTestPane::buttonClicked(juce::Button*)`
+- `CExtPortTestPane::createButton(char const*)`
+- `CExtPortTestPane::paint(juce::Graphics&)`
+- `CExtPortTestPane::putText(char const*)`
+- `CExtPortTestPane::resized()`
+- `CExtPortTestPane::startFlip()`
+- `CExtPortTestPane::startTest()`
+- `CExtPortTestPane::timerCallback()`
+- `CExtPortTestPane::timerCallback()::ddd`
+- `CExtPortTestPane::~CExtPortTestPane()`
+- `CExtPortTestPane_v2::CExtPortTestPane_v2(CUIDataMgr*, CMainPane*)`
+- `CExtPortTestPane_v2::Reload()`
+- `CExtPortTestPane_v2::StartTestExternal()`
+- `CExtPortTestPane_v2::StopTestExternal()`
+- `CExtPortTestPane_v2::buttonClicked(juce::Button*)`
+- `CExtPortTestPane_v2::createButton(char const*)`
+- `CExtPortTestPane_v2::paint(juce::Graphics&)`
+- `CExtPortTestPane_v2::putText(char const*)`
+- `CExtPortTestPane_v2::resized()`
+- `CExtPortTestPane_v2::startFlip()`
+- `CExtPortTestPane_v2::startTest()`
+- `CExtPortTestPane_v2::timerCallback()`
+- `CExtPortTestPane_v2::timerCallback()::ddd`
+- `CExtPortTestPane_v2::~CExtPortTestPane_v2()`
+- `CExtPortTest_v2::CExtPortTest_v2()`
+- `CExtPortTest_v2::Test(juce::String&)`
+- `CExtPortTest_v2::allPinsDown()`
+- `CExtPortTest_v2::allPinsUp()`
+- `CFileBrowserPane::UpdateSSDFreeSpaceInfo()`
+- `CFileBrowserPane::importInstrumentLibrary(juce::File const&)`
+- `CFileUtils::MimicCopyDirWithCheckSync(juce::File&, juce::File&, bool&, juce::String&, int)`
+- `CFileUtils::MimicCopyDirWithCheckSyncExceptInstrumentData(juce::File&, juce::File&, int)`
+- `CFileUtils::MimicCopyFileWithCheckNoSync(juce::File&, juce::File&, int)`
+- `CFileUtils::MimicCopyFileWithCheckSync(juce::File&, juce::File&, int)`
+- `CFileUtils::mimicCopyFileWithCheckInternal(juce::File&, juce::File&, int)`
+- `CFreeComp::LoadState(CDataStorage&, CEString const&)`
+- `CFreeComp::SaveState(CDataStorage&, CEString const&)`
+- `CHHCCCurvePane::UpdateCurveTrace()`
+- `CHWTestPane::CHWTestPane(CUIDataMgr*, CMainPane*)`
+- `CHWTestPane::Reload()`
+- `CHWTestPane::buttonClicked(juce::Button*)`
+- `CHWTestPane::doAutotestCycle(CHWTestPaneBase*, juce::TextButton*)`
+- `CHWTestPane::paint(juce::Graphics&)`
+- `CHWTestPane::resized()`
+- `CHWTestPane::timerCallback()`
+- `CHWTestPane::updateBtn(CHWTestPaneBase*, juce::TextButton*)`
+- `CHWTestPane::~CHWTestPane()`
+- `CHatCtrl::CHatCtrl(CTriggerEngine2*)`
+- `CHatCtrl::Init(CInstrumentSlot&)`
+- `CHatCtrl::ProcessCCChange(float, float, float, CInstrumentSlot&, bool)`
+- `CHatCtrl::ProcessNoteOn(CEDTriggerEvent2&, float, float, float, CInstrumentSlot&)`
+- `CHatCtrl::putMidiOutEvent(CTrigPadDescriptor*, eInstZoneType, float, int, int, int)`
+- `CHatCtrl::putMidiOutEvent(CTrigPadDescriptor*, eInstZoneType, float, int, int, int) (.part.2.constprop.4)`
+- `CHatCtrlTab::Build(CInstrumentSlot&)`
+- `CHatCtrlTab::BuildForZone(int, CInstrumentSlot&)`
+- `CHatCtrlTab::BuildForZone2(int, CInstrumentSlot&)`
+- `CHatCtrlTab::BuildForZone3(int, CInstrumentSlot&)`
+- `CHatCtrlTab::calcArtIdxToPlay(float, CInstrumentSlot&, int)`
+- `CHatCtrlTab::calcArtIdxToPlay2(int, CInstrumentSlot&, int)`
+- `CHomePane::UpdateSetListName()`
+- `CHomePane::processMixer()`
+- `CInstrArticulation::loadStateInformation(CEString&, int, CDataStorage&)`
+- `CInstrArticulation::saveStateInformation(CEString&, int, CDataStorage&)`
+- `CInstrumentData::AddHatControlZone(char const*, int, int const*)`
+- `CInstrumentData::AddZone(int, char const*)`
+- `CInstrumentData::AllocateFullSamplePoolForDrmConv()`
+- `CInstrumentData::CInstrumentData()`
+- `CInstrumentData::CollectSampleIdxForFirstSampleFullPreload()`
+- `CInstrumentData::GetArt(int)`
+- `CInstrumentData::GetItemToPlay(int, int, bool)`
+- `CInstrumentData::GetItemToPlay_wave()`
+- `CInstrumentData::GetLoadTimeString(long long&)`
+- `CInstrumentData::LoadWaveFile(char const*, CEString&)`
+- `CInstrumentData::PutSampleIdx(int, int, int)`
+- `CInstrumentData::ReplyIfSampleUsedForPreload(int)`
+- `CInstrumentData::ReplyInstZoneByArtId(int)`
+- `CInstrumentData::Reset()`
+- `CInstrumentData::SetDataFileNameToLoad(char const*)`
+- `CInstrumentData::SetIsFromInstrumentEditor(bool)`
+- `CInstrumentData::loadPoolData_v2(char const*, int, int*, int*, bool, IInstrumentLoaderSleepCallback*, long long)`
+- `CInstrumentData::loadPoolInfo(CEString&, int, bool, bool, CDataStorage&, bool, IInstrumentLoaderSleepCallback*, long long)`
+- `CInstrumentData::loadRemainingPoolData_v2(IInstrumentLoaderSleepCallback*)`
+- `CInstrumentData::loadRmsEnvelopeInfo(CEString&, int, CDataStorage&)`
+- `CInstrumentData::loadSinglePoolItem(CSampleItem&, _IO_FILE*)`
+- `CInstrumentData::loadStateInformation(CEString&, int, bool, bool, CDataStorage&, IInstrumentLoaderSleepCallback*, long long)`
+- `CInstrumentData::replyArtIdxByArtID(int)`
+- `CInstrumentData::replyArtIdxByInstZone(eInstZoneType, bool&, bool&)`
+- `CInstrumentData::replyHatClose2OpenTransitionArtIdx()`
+- `CInstrumentData::savePoolInfo(CEString&, int, CDataStorage&)`
+- `CInstrumentData::saveRmsEnvelopeInfo(CEString&, int, CDataStorage&)`
+- `CInstrumentData::saveStateInformation(CEString&, int, CDataStorage&)`
+- `CInstrumentData::smpCount`
+- `CInstrumentData::smpCountPld`
+- `CInstrumentData::~CInstrumentData()`
+- `CInstrumentLibStorage::CInstrumentLibStorage(CDirectoryManager*)`
+- `CInstrumentLibStorage::ReplyInstInfoByLibAndInstName(CEString&, CEString&, CEString&, CShortInstInfo&)`
+- `CInstrumentLibStorage::ReplyInstInfoOfType(CEString, std::vector<CShortInstInfo, std::allocator<CShortInstInfo>>&)`
+- `CInstrumentLibStorage::Rescan()`
+- `CInstrumentLibStorage::loadInfoFromInst(juce::File const&)`
+- `CInstrumentLibStorage::loadInfoFromInstPreset(juce::File const&)`
+- `CInstrumentLibStorage::loadOneShotWaqvInfo(juce::File const&)`
+- `CInstrumentLibStorage::scanForInstrumentPresets()`
+- `CInstrumentLibStorage::scanForInstruments()`
+- `CInstrumentLibStorage::scanForOneShotWavs()`
+- `CInstrumentLibStorage::~CInstrumentLibStorage()`
+- `CInstrumentLoader::CInstrumentLoader(CEDrumEngine2*)`
+- `CInstrumentLoader::ClearKitSync()`
+- `CInstrumentLoader::ClearSingleSlot(int)`
+- `CInstrumentLoader::DoSleep()`
+- `CInstrumentLoader::LoadKit(CKitLoadReq&)`
+- `CInstrumentLoader::LoadSingleSlot(int, CShortInstInfo&, bool)`
+- `CInstrumentLoader::LoadSingleSlotAndApplyState(int, CShortInstInfo&, bool, CDataStorage&)`
+- `CInstrumentLoader::clearDelayedSamples(int)`
+- `CInstrumentLoader::clearSlotSync(int)`
+- `CInstrumentLoader::fillActiveSampleItemsPool(int)`
+- `CInstrumentLoader::loadSingleInstrumentMixerData(CSlotLoadReq&)`
+- `CInstrumentLoader::passSamplePoolToUnloader(int)`
+- `CInstrumentLoader::passSecondarySamplePoolToUnloader(int)`
+- `CInstrumentLoader::processClearSlot(CSlotLoadReq&)`
+- `CInstrumentLoader::processDelayedLoad()`
+- `CInstrumentLoader::processLoadKit(CKitLoadReq&)`
+- `CInstrumentLoader::processLoadKit_v4(CKitLoadReq&)`
+- `CInstrumentLoader::processLoadSlot(CSlotLoadReq&)`
+- `CInstrumentLoader::processLoadSlot_v4(CSlotLoadReq&)`
+- `CInstrumentLoader::queueClearSlot(CSlotLoadReq&)`
+- `CInstrumentLoader::queueLoadKit(CKitLoadReq&)`
+- `CInstrumentLoader::queueLoadSlot(CSlotLoadReq&)`
+- `CInstrumentLoader::replyIfHaveDelayedSamples(int)`
+- `CInstrumentLoader::run()`
+- `CInstrumentLoader::storeActiveSampleItemForLaterDeletion(int, CSampleItemAndVoiceId&)`
+- `CInstrumentLoader::workerThread()`
+- `CInstrumentLoader::workerThread()::re_ent`
+- `CInstrumentLoader::~CInstrumentLoader()`
+- `CInstrumentMicInfo::loadStateInformation(CEString&, int, CDataStorage&)`
+- `CInstrumentMicInfo::saveStateInformation(CEString&, int, CDataStorage&)`
+- `CInstrumentSlot::CInstrumentSlot(CSamplerEngine*, CDiskStreamer*, int)`
+- `CInstrumentSlot::CanRender()`
+- `CInstrumentSlot::FastLoad_Preload(char const*, char const*, bool, bool, IInstrumentLoaderSleepCallback*, bool&)`
+- `CInstrumentSlot::FastLoad_PreloadWave(char const*, CEString&)`
+- `CInstrumentSlot::FastLoad_SetRenderBufferIdxs()`
+- `CInstrumentSlot::FastLoad_SwitchInstData()`
+- `CInstrumentSlot::GetMicIdxInRenderBuf(int)`
+- `CInstrumentSlot::GetName()`
+- `CInstrumentSlot::GetVoice(int)`
+- `CInstrumentSlot::GetVoiceCount()`
+- `CInstrumentSlot::GetVolume()`
+- `CInstrumentSlot::HasAnyHatTransitionVoicesAreadyPlaying()`
+- `CInstrumentSlot::IsNoteMuter(int)`
+- `CInstrumentSlot::LoadDRM(char const*)`
+- `CInstrumentSlot::LoadData(char const*, char const*, bool, bool, IInstrumentLoaderSleepCallback*, bool&)`
+- `CInstrumentSlot::LoadData_wav(char const*, CEString&, bool)`
+- `CInstrumentSlot::MuteAllHatVoices()`
+- `CInstrumentSlot::MuteAllLongHatTailVoices()`
+- `CInstrumentSlot::MuteAllMutableVoices()`
+- `CInstrumentSlot::MuteClostToOpenHatVoice()`
+- `CInstrumentSlot::RegisterCrashHitForModelling()`
+- `CInstrumentSlot::RegisterSnareHitForHumanize(int&, int)`
+- `CInstrumentSlot::RenderSlot(int, bool)`
+- `CInstrumentSlot::ReplyArtIdxByInstZone(eInstZoneType, bool&, bool&)`
+- `CInstrumentSlot::ReplyCumulativeRMSForChokeVolume()`
+- `CInstrumentSlot::ReplyHumanizeInterval()`
+- `CInstrumentSlot::ReplyLastPlayedVelo()`
+- `CInstrumentSlot::ReplyLastVoice()`
+- `CInstrumentSlot::Reset()`
+- `CInstrumentSlot::ResetSnareHitForHumanize()`
+- `CInstrumentSlot::SetHatCtrl(float)`
+- `CInstrumentSlot::SetHumanizeInterval(int)`
+- `CInstrumentSlot::SetIsLoaded(bool)`
+- `CInstrumentSlot::SetMicIdxInRenderBuf(int, int)`
+- `CInstrumentSlot::SetVolume(float)`
+- `CInstrumentSlot::StopAllVoices()`
+- `CInstrumentSlot::TriggerSlot(CEDTriggerEvent2&, int, int, float, bool&, float, eCustomMuter, bool, float, bool, float, CHatContext*)`
+- `CInstrumentSlot::TriggerSlot_2voices(CEDTriggerEvent2&, int, int, int, float, float, float, bool&, float, eCustomMuter, bool, bool, bool, float, CHatContext*)`
+- `CInstrumentSlot::TriggerSlot_2voices_ForSnare(CEDTriggerEvent2&, int, int, int, float, float, float, float)`
+- `CInstrumentSlot::UpdateMicMuteVolumes()`
+- `CInstrumentSlot::prepareVoiceItemForTrigger(CEDTriggerEvent2&, int, int, float, float, bool&, float, CVoiceItem&, eCustomMuter, bool, float)`
+- `CInstrumentSlot::~CInstrumentSlot()`
+- `CInstrumentSlotDescriptor::AddArt(CEString, eInstZoneType)`
+- `CInstrumentSlotDescriptor::LoadInstrumentLibData(CDataStorage&, CEString&, bool&, CEString&, CEString&, CEString&)`
+- `CInstrumentSlotDescriptor::LoadState(CDataStorage&, CEString&, bool)`
+- `CInstrumentSlotDescriptor::ReplyArtNameAndZone(int, eInstZoneType&)`
+- `CInstrumentSlotDescriptor::ResetArt()`
+- `CInstrumentSlotDescriptor::SaveState(CDataStorage&, CEString&)`
+- `CInstrumentSlotDescriptor::SetIsLoaded(bool)`
+- `CInstrumentSlotDescriptor::SetLibsStorageInfo(CShortInstInfo&)`
+- `CInstrumentStorage::CInstrumentStorage(CEDrumEngine2*)`
+- `CInstrumentStorage::FillKitPiecesArrayFromPreset(CDataStorage&, std::vector<CSlotLoadReq, std::allocator<CSlotLoadReq>>&)`
+- `CInstrumentStorage::GetGlobalClickTrackMicDest()`
+- `CInstrumentStorage::GetGlobalMetronomeAuxMicDest()`
+- `CInstrumentStorage::GetGlobalOhMicDest()`
+- `CInstrumentStorage::GetGlobalReverbMicDest()`
+- `CInstrumentStorage::GetGlobalRoomMicDest()`
+- `CInstrumentStorage::GetGlobalSongPlayerAuxbMicDest()`
+- `CInstrumentStorage::LoadCurrentLayout_IS()`
+- `CInstrumentStorage::LoadLayout_IS(CDataStorage&)`
+- `CInstrumentStorage::Load_IS(CDataStorage&)`
+- `CInstrumentStorage::ReplyHatInstDesc()`
+- `CInstrumentStorage::ReplyInstDesc(int)`
+- `CInstrumentStorage::SaveCurrState_IS()`
+- `CInstrumentStorage::SaveCurrentLayout_IS()`
+- `CInstrumentStorage::SaveLayout_IS(CDataStorage&)`
+- `CInstrumentStorage::SaveLoadedInstrumentsInfo_IS(CDataStorage&)`
+- `CInstrumentStorage::Save_IS(CDataStorage&)`
+- `CInstrumentStorage::SetGlobalClickTrackMicDest(eLineOutEnum)`
+- `CInstrumentStorage::SetGlobalMetronomeAuxMicDest(eLineOutEnum)`
+- `CInstrumentStorage::SetGlobalOhMicDest(eLineOutEnum)`
+- `CInstrumentStorage::SetGlobalReverbMicDest(eLineOutEnum)`
+- `CInstrumentStorage::SetGlobalRoomMicDest(eLineOutEnum)`
+- `CInstrumentStorage::SetGlobalSongPlayerAuxMicDest(eLineOutEnum)`
+- `CInstrumentStorage::SetIsRideSplit(bool)`
+- `CInstrumentStorage::UpdateAuxInstrumentType(CInstrumentSlotDescriptor*, CEString&, bool, bool)`
+- `CInstrumentStorage::buildDesc()`
+- `CInstrumentStorage::test_loadInt()`
+- `CInstrumentStorage::~CInstrumentStorage()`

@@ -1,0 +1,44 @@
+#!/bin/sh
+
+case "$1" in
+  start)
+    exec >>/var/log/mimic-network.log 2>&1
+    echo "Open Mimic network startup: $(date)"
+    modprobe cfg80211 || true
+    if [ -f /mnt/sd/ZT9101.KO ] && [ -f /mnt/sd/WIFI.CFG ]; then
+      insmod /mnt/sd/ZT9101.KO cfg=/mnt/sd/WIFI.CFG || true
+    fi
+    attempts=0
+    while [ ! -d /sys/class/net/wlan0 ] && [ "$attempts" -lt 15 ]; do
+      attempts=$((attempts + 1))
+      sleep 1
+    done
+    if [ -d /sys/class/net/wlan0 ] && [ -s /mnt/sd/WPA.CONF ]; then
+      ifconfig wlan0 up
+      mkdir -p /tmp/wpa_supplicant
+      wpa_supplicant -B -i wlan0 -c /mnt/sd/WPA.CONF -Dnl80211,wext
+      attempts=0
+      while [ "$attempts" -lt 45 ]; do
+        wpa_cli -p /tmp/wpa_supplicant -i wlan0 status 2>/dev/null | grep -q 'wpa_state=COMPLETED' && break
+        attempts=$((attempts + 1))
+        sleep 1
+      done
+      [ "$attempts" -ge 45 ] || udhcpc -i wlan0 -n -q -t 8 -T 3 -s /usr/share/udhcpc/default.script
+    fi
+    if [ -s /mnt/sd/AUTHKEYS ]; then
+      cp /mnt/sd/AUTHKEYS /root/.ssh/authorized_keys
+      chmod 600 /root/.ssh/authorized_keys
+      if [ ! -s /mnt/sd/DBHOST.KEY ]; then
+        dropbearkey -t ed25519 -f /mnt/sd/DBHOST.KEY
+      fi
+      cp /mnt/sd/DBHOST.KEY /tmp/DBHOST.KEY
+      chmod 600 /tmp/DBHOST.KEY
+      dropbear -s -g -r /tmp/DBHOST.KEY -p 22
+    fi
+    ifconfig wlan0 2>/dev/null || true
+    ;;
+  stop)
+    killall dropbear wpa_supplicant 2>/dev/null || true
+    ;;
+  *) exit 2 ;;
+esac

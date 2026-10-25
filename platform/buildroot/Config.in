@@ -1,0 +1,1 @@
+source "$BR2_EXTERNAL_OPEN_MIMIC_PATH/package/mimicd/Config.in"

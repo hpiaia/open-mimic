@@ -1,0 +1,13 @@
+#!/bin/sh
+
+case "$1" in
+  start)
+    echo 'Open Mimic: loading original USB host and keyboard drivers'
+    for module in usbcore phy-omap-usb2 xhci-hcd xhci-plat-hcd dwc3-omap dwc3 usbhid hid-generic usbkbd; do
+      modprobe "$module" 2>/dev/null || true
+    done
+    chvt 1 2>/dev/null || true
+    ;;
+  stop) ;;
+  *) exit 2 ;;
+esac

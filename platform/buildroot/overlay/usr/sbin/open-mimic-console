@@ -1,0 +1,16 @@
+#!/bin/sh
+# BusyBox init starts this after rcS, when boot messages have finished.
+exec </dev/tty1 >/dev/tty1 2>&1
+export HOME=/root TERM=linux PATH=/bin:/sbin:/usr/bin:/usr/sbin
+cd /root || exit 1
+
+# The framebuffer retains the Pearl splash until the console erases it.
+# Keep later kernel warnings in dmesg without overwriting the prompt.
+printf '1\n' > /proc/sys/kernel/printk
+# Reset the terminal and restore line input before starting the shell.
+/bin/busybox reset
+/bin/busybox stty sane
+/bin/busybox stty opost onlcr icrnl echo icanon isig iexten
+printf '\033[0m\033[?25h\033[2J\033[H'
+printf 'Open Mimic Buildroot\n\n'
+exec /bin/sh -l

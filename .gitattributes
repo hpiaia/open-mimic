@@ -1,0 +1,11 @@
+*.ko binary
+*.KO binary
+*.FW binary
+*.dtb binary
+*.img binary
+MLO binary
+zImage binary
+software/prebuilt/armhf/* binary
+platform/initramfs/base/bin/busybox binary
+platform/initramfs/base/sbin/dropbear* binary
+third_party/zt9101/** whitespace=-blank-at-eof,-trailing-space

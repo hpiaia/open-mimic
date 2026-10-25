@@ -1,0 +1,20 @@
+# Generated root filesystems, SD images, logs and local build outputs
+/build/
+/software/mimicd/target/
+*.img
+!platform/boot/u-boot.img
+*.ext4
+*.tar
+*.tar.gz
+
+# Local credentials and device state
+WPA.CONF
+AUTHKEYS
+DBHOST.KEY
+*.pem
+
+# Editors and Python
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/

@@ -1,0 +1,16 @@
+#!/bin/sh
+
+case "$1" in
+  start)
+    mount -t vfat -o rw /dev/mmcblk0p1 /mnt/sd || true
+    for entry in 'sda1 os' 'sda2 app' 'sda3 settings' 'sda4 user'; do
+      set -- $entry
+      mount -t ext4 -o ro,noload "/dev/$1" "/mnt/pearl/$2" || true
+    done
+    ;;
+  stop)
+    for name in user settings app os; do umount "/mnt/pearl/$name" 2>/dev/null || true; done
+    umount /mnt/sd 2>/dev/null || true
+    ;;
+  *) exit 2 ;;
+esac
