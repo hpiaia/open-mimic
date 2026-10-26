@@ -1,6 +1,0 @@
-[package]
-name = "mimicd"
-version = "0.1.0"
-edition = "2021"
-license = "GPL-2.0-only"
-description = "Open Mimic hardware capture and trigger daemon"

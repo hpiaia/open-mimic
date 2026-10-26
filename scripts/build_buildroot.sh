@@ -35,6 +35,22 @@ docker run --rm --platform linux/arm64 \
     cd /work/buildroot-2025.02.19
     make O=/work/output \
       BR2_EXTERNAL=/project/platform/buildroot open_mimic_defconfig
+    # Enabling C++ in an existing C-only toolchain needs a GCC rebuild.
+    if [ -x /work/output/host/bin/arm-buildroot-linux-musleabihf-gcc ] &&
+       [ ! -x /work/output/host/bin/arm-buildroot-linux-musleabihf-g++ ]; then
+      make O=/work/output host-gcc-final-dirclean
+      make O=/work/output BR2_JLEVEL=4 host-gcc-final
+    fi
+    if [ -x /work/output/host/bin/arm-buildroot-linux-musleabihf-g++ ] &&
+       [ ! -e /work/output/target/usr/lib/libstdc++.so.6 ]; then
+      make O=/work/output gcc-final-reinstall
+    fi
+    # Old evdev objects must be rebuilt when adding the time64 UAPI backport.
+    if [ ! -e /work/output/build/mimic-input-abi-1/.stamp_staging_installed ] &&
+       find /work/output/build -maxdepth 1 -type d -name "libevdev-*" -print -quit | grep -q .; then
+      make O=/work/output libevdev-dirclean mtdev-dirclean \
+        xdriver_xf86-input-evdev-dirclean xserver_xorg-server-dirclean
+    fi
     make O=/work/output BR2_JLEVEL=4
     mkdir -p /project/build/buildroot-output/images
     cp /work/output/images/rootfs.ext4 /project/build/buildroot-output/images/

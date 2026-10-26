@@ -1,0 +1,16 @@
+config BR2_PACKAGE_OPEN_MIMIC
+	bool "Open Mimic C++ applications"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on !BR2_STATIC_LIBS
+	select BR2_PACKAGE_MIMIC_INPUT_ABI
+	select BR2_PACKAGE_JUCE_FRAMEWORK
+	select BR2_PACKAGE_FREETYPE
+	select BR2_PACKAGE_FONTCONFIG
+	select BR2_PACKAGE_XLIB_LIBX11
+	select BR2_PACKAGE_XLIB_LIBXCOMPOSITE
+	select BR2_PACKAGE_XLIB_LIBXEXT
+	select BR2_PACKAGE_XLIB_LIBXRENDER
+	select BR2_PACKAGE_XLIB_LIBXI
+	help
+	  JUCE instrument interface and headless ADC/audio engine foundation.

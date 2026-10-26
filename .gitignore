@@ -1,6 +1,6 @@
 # Generated root filesystems, SD images, logs and local build outputs
 /build/
-/software/mimicd/target/
+/software/*/target/
 *.img
 !platform/boot/u-boot.img
 *.ext4

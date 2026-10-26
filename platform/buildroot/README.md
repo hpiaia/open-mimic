@@ -27,9 +27,17 @@ model already tested. Bluetooth and other adapters still need hardware tests.
 
 At boot, the init scripts load Pearl USB keyboard modules, mount the original
 SSD partitions read-only without replaying their journals, then start Wi-Fi
-and key-only SSH when credentials are present. The LCD shell uses `tty1` and
-starts without a login prompt after restoring normal terminal settings and
-clearing the inherited Pearl splash. Subsequent kernel warnings remain in
-`dmesg` without writing over the LCD prompt. Interactive shells show the
-current directory in their prompt.
+and key-only SSH when credentials are present. The local `tty1` session starts
+Xorg on the original framebuffer and runs the JUCE interface. Touch and keyboard
+input use evdev and eudev. Xorg does not listen on TCP; the session uses a private
+X authorization cookie. A `NOUI` file on the SD FAT partition bypasses the UI
+and opens the local shell. Display failures also return to that shell.
+Subsequent kernel warnings remain in `dmesg` without writing over the display.
+Interactive shells show the current directory in their prompt.
 No original SSD partition is modified by these scripts.
+
+The C++ applications are built with CMake and pinned JUCE 9.0.4 sources. The
+container supplies native dependencies for JUCE's `juceaide` build helper;
+target libraries and Xorg are cross-compiled by Buildroot. Application targets
+use JUCE's official CMake helpers. Browser and OpenGL modules are not required
+for the initial software-rendered interface.

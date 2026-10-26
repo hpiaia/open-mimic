@@ -1,0 +1,25 @@
+#!/bin/sh
+# The local console owns this display session; SSH remains independent.
+set -u
+export DISPLAY=:0 XAUTHORITY=/tmp/mimic-xauthority OPEN_MIMIC_FULLSCREEN=1
+umask 077
+: > "$XAUTHORITY"
+xauth -f "$XAUTHORITY" add "$DISPLAY" . "$(mcookie)" || exit 1
+Xorg "$DISPLAY" vt1 -keeptty -nolisten tcp -noreset -auth "$XAUTHORITY" \
+  -logfile /tmp/mimic-xorg.log >/tmp/mimic-display.log 2>&1 &
+xpid=$!
+cleanup() {
+  kill "$xpid" 2>/dev/null || true
+  wait "$xpid" 2>/dev/null || true
+  rm -f "$XAUTHORITY"
+}
+trap cleanup EXIT
+trap 'exit 0' INT TERM
+attempts=0
+while [ ! -S /tmp/.X11-unix/X0 ]; do
+  kill -0 "$xpid" 2>/dev/null || exit 1
+  attempts=$((attempts + 1))
+  [ "$attempts" -lt 100 ] || exit 1
+  sleep 0.1
+done
+/usr/bin/mimic-ui >>/tmp/mimic-ui.log 2>&1

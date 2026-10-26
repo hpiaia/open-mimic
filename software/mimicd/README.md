@@ -1,6 +1,6 @@
 # mimicd
 
-This is the first Rust component of the Open Mimic application. It currently
+This C++ component of the Open Mimic application currently
 probes the two Pearl trigger ADC character devices and captures diagnostic,
 read-only DMA snapshots. It does not yet detect hits, play audio, run a model,
 or modify the original SSD.
@@ -53,4 +53,8 @@ generation; neither gap-free capture nor sample timing is established.
 The file preserves evidence for decoding the driver contract before a
 real-time trigger engine is added.
 
-Run host-side tests with `cargo test --manifest-path software/mimicd/Cargo.toml`.
+Run capture-format tests through CMake/CTest as described in the application README.
+
+`mimicd audio-self-test` runs an offline JUCE DSP gain check. It does not open
+an audio device or play sound. The Pearl McASP adapter and continuous engine
+are not implemented yet.

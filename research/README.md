@@ -2,6 +2,11 @@
 
 Core references for developing the new system:
 
+- [Observed memory layout](memory-layout.md): RAM exposed by the Pearl boot configuration.
+
+- [Application architecture](application-architecture.md) and
+  [JUCE integration](juce-integration.md): process ownership and framework choices.
+
 - [Hardware API](hardware-api-map.md): Pearl devices and ioctls.
 - [Trigger path](mimic-trigger-input-reconstruction.md): ADC, DMA, measured
   channels, and next experiments.
