@@ -1,0 +1,24 @@
+From: Humberto Piaia <betopiaia@gmail.com>
+Subject: [PATCH] juceaide: clear the target pkg-config sysroot for host tools
+
+Buildroot's toolchain exports PKG_CONFIG_SYSROOT_DIR for target lookups.
+JUCE resets other cross-build variables before bootstrapping native
+juceaide, but leaves this variable in place. Host pkg-config then returns
+ARM target include paths to the native compiler.
+
+Clear it beside the existing pkg-config environment resets. Application
+compilation continues to use Buildroot's target toolchain and dependencies.
+
+Upstream-Status: Pending
+Signed-off-by: Humberto Piaia <betopiaia@gmail.com>
+---
+--- a/extras/Build/juceaide/CMakeLists.txt
++++ b/extras/Build/juceaide/CMakeLists.txt
+@@ -90,6 +90,7 @@
+         unset(ENV{OBJCOPY})
+         unset(ENV{OBJDUMP})
+         unset(ENV{PKG_CONFIG_LIBDIR})
++        unset(ENV{PKG_CONFIG_SYSROOT_DIR})
+         unset(ENV{PKG_CONFIG})
+         unset(ENV{RANLIB})
+         unset(ENV{RC})

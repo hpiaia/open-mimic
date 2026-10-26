@@ -3,14 +3,14 @@
 Open Mimic uses C++17 and JUCE 9.0.4 for the instrument application. Python
 is used for offline capture inspection and model-training tools.
 
-- `mimic-ui/`: JUCE components, touchscreen navigation and network status.
-- `mimicd/`: ADC capture and the JUCE audio-engine foundation.
+- `mimic/`: JUCE components, touchscreen navigation and network status.
+- `mimicd/`: ADC capture, JUCE analog output tests, and analog Aux control.
 - `common/`: hardware access and the versioned capture format.
-- `tests/`: capture-format regression checks independent of the hardware.
+- `tests/`: capture-format and Aux gain regression checks independent of the hardware.
 
-The interface and hardware engine have separate process ownership. The local
-control API and continuously running trigger/audio service remain to be
-implemented. See [architecture](../research/application-architecture.md) and
+The interface and hardware engine have separate process ownership. Runtime control files publish headphone and Aux levels, and a Unix domain
+socket cancels manual audio tests. The Aux controller runs continuously;
+continuous PCM instrument playback and trigger inference remain to be implemented. See [architecture](../research/application-architecture.md) and
 [JUCE integration decisions](../research/juce-integration.md).
 
 ## Build
@@ -30,7 +30,7 @@ ctest --test-dir build/desktop --output-on-failure
 The same GUI runs in a desktop window. `OPEN_MIMIC_FULLSCREEN=1` enables the
 instrument display mode. ADC access requires the Pearl Linux devices.
 
-To test only the portable capture serialization without JUCE:
+To test portable capture serialization and Aux gain controls without JUCE:
 
 ```sh
 cmake -S software -B build/capture-tests -DMIMIC_BUILD_UI=OFF -DMIMIC_USE_JUCE=OFF

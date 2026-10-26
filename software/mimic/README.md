@@ -1,8 +1,9 @@
-# Mimic UI
+# Mimic
 
 C++/JUCE application for the Mimic Pro's 1024 × 600 LCD. It displays Wi-Fi
-association, SSID and IPv4 address, with placeholder calibration, trigger-monitor
-and audio-test buttons. Touches show a marker, count and coordinates.
+association, SSID and IPv4 address, alongside CPU/RAM usage, headphone gain, manual audio tests and Aux input
+controls. Calibration and trigger monitoring remain placeholders. Touches
+show a marker, count and coordinates.
 
 The application uses JUCE components, labels, buttons, a LookAndFeel theme and
 a Grid layout. It runs on Xorg's framebuffer backend with the existing Goodix
@@ -18,8 +19,11 @@ with TCP connections disabled and a private authorization cookie. Place a
 `NOUI` file on the SD FAT partition to start the local shell instead. Display
 session failures return to the shell. SSH is independent of the display.
 
-Logs: `/tmp/mimic-ui.log`, `/tmp/mimic-xorg.log`, `/tmp/mimic-display.log`.
-The calibration, trigger-monitor and audio buttons remain placeholders.
+Logs: `/tmp/mimic.log`, `/tmp/mimic-xorg.log`, `/tmp/mimic-display.log`.
+The wheel adjusts headphone volume and toggles mute. Full-screen touch lists
+select physical output routes, frequency and test level. Aux input has an
+independent level and an optional link to headphone gain. Controls are applied
+by `mimicd`, outside the display process.
 
 A subdued header indicator shows total system CPU usage and used/total RAM in
 MiB. A separate worker samples `/proc/stat` and `/proc/meminfo` once per second.

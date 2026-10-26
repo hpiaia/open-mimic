@@ -22,4 +22,4 @@ while [ ! -S /tmp/.X11-unix/X0 ]; do
   [ "$attempts" -lt 100 ] || exit 1
   sleep 0.1
 done
-/usr/bin/mimic-ui >>/tmp/mimic-ui.log 2>&1
+/usr/bin/mimic >>/tmp/mimic.log 2>&1

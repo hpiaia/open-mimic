@@ -53,41 +53,57 @@ target_sources(mimicd PRIVATE mimicd/src/main.cpp)
 target_link_libraries(mimicd PRIVATE mimic-hardware Threads::Threads)
 
 if(MIMIC_USE_JUCE)
-    target_sources(mimicd PRIVATE mimicd/src/AudioEngine.cpp)
+    target_sources(mimicd PRIVATE
+        mimicd/src/AudioEngine.cpp
+        mimicd/src/AuxControl.cpp
+        mimicd/src/PearlAudioDevice.cpp
+        mimicd/src/PearlAudioBoard.cpp
+        mimicd/src/AudioTest.cpp
+    )
     target_link_libraries(mimicd PRIVATE
         mimic-juce-config
+        juce::juce_audio_devices
         juce::juce_dsp
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
     )
-    target_compile_definitions(mimicd PRIVATE MIMIC_USE_JUCE=1)
+    target_compile_definitions(mimicd PRIVATE MIMIC_USE_JUCE=1 JUCE_ALSA=0 JUCE_JACK=0)
 endif()
 
 install(TARGETS mimicd RUNTIME DESTINATION bin)
 
 if(MIMIC_BUILD_UI)
-    juce_add_gui_app(mimic-ui
-        PRODUCT_NAME "mimic-ui"
+    juce_add_gui_app(mimic
+        PRODUCT_NAME "mimic"
         COMPANY_NAME "Open Mimic"
         BUNDLE_ID "org.openmimic.ui"
     )
-    target_sources(mimic-ui PRIVATE
-        mimic-ui/src/main.cpp
-        mimic-ui/src/MainComponent.cpp
-        mimic-ui/src/NetworkMonitor.cpp
-        mimic-ui/src/SystemMonitor.cpp
+    target_sources(mimic PRIVATE
+        mimic/src/main.cpp
+        mimic/src/AudioDebugPanel.cpp
+        mimic/src/AuxInputPanel.cpp
+        mimic/src/TouchChoice.cpp
+        mimic/src/WheelInput.cpp
+        mimic/src/MainComponent.cpp
+        mimic/src/NetworkMonitor.cpp
+        mimic/src/SystemMonitor.cpp
     )
-    target_link_libraries(mimic-ui PRIVATE
+    target_include_directories(mimic PRIVATE common)
+    target_link_libraries(mimic PRIVATE
         mimic-juce-config
         juce::juce_gui_basics
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
         Threads::Threads
     )
-    install(TARGETS mimic-ui RUNTIME DESTINATION bin)
+    install(TARGETS mimic RUNTIME DESTINATION bin)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(aux-control-test tests/aux_control_test.cpp)
+    target_include_directories(aux-control-test PRIVATE common)
+    add_test(NAME aux-control COMMAND aux-control-test)
+
     add_executable(capture-test tests/capture_test.cpp)
     target_link_libraries(capture-test PRIVATE mimic-hardware)
     add_test(NAME capture-format COMMAND capture-test)

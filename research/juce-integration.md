@@ -56,8 +56,8 @@ other third-party components keep their existing licences.
 
 JUCE bootstraps `juceaide` for the build host during cross compilation.
 Buildroot exports a target pkg-config sysroot; it must not leak into that
-native bootstrap. The package hook adds the missing sysroot reset beside
-JUCE's existing host-environment resets and checks the expected source marker.
+native bootstrap. The versioned Buildroot patch adds the missing sysroot reset beside
+JUCE's existing host-environment resets.
 `PATH_ORIG` selects native host tools for that step. Application targets still
 use the ARM toolchain and target dependencies. No JUCE runtime code is patched.
 
@@ -65,7 +65,6 @@ use the ARM toolchain and target dependencies. No JUCE runtime code is patched.
 
 The Pearl ARM32 kernel emits 16-byte evdev records. Its 4.1 UAPI header embeds
 libc `timeval`, which makes that structure 24 bytes with musl time64. The
-[mimic-input-abi package](../platform/compat/input-abi/) backports the later
-Linux input-event timestamp definition and provides an explicit dependency for
-input libraries and Xorg. This is a userspace header compatibility fix; the
+[Linux headers patch](../platform/buildroot/patches/) backports the later
+Linux input-event timestamp definition before toolchain consumers compile. This is a userspace header compatibility fix; the
 Pearl kernel and its drivers remain unchanged.

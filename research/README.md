@@ -3,11 +3,12 @@
 Core references for developing the new system:
 
 - [Observed memory layout](memory-layout.md): RAM exposed by the Pearl boot configuration.
-
 - [Application architecture](application-architecture.md) and
   [JUCE integration](juce-integration.md): process ownership and framework choices.
-
 - [Hardware API](hardware-api-map.md): Pearl devices and ioctls.
+- [Analog outputs](audio-output-validation.md), [Aux input](aux-input.md), and
+  [wheel control](wheel-input.md): recovered board interfaces and live validation.
+- [Ghidra setup](ghidra-setup.md): REA provider and native decompiler configuration.
 - [Trigger path](mimic-trigger-input-reconstruction.md): ADC, DMA, measured
   channels, and next experiments.
 - [Boot and storage](cl-som-am57x-sd-boot-test.md): how SD boot was established
@@ -19,8 +20,6 @@ Core references for developing the new system:
 - [CompuLab](compulab-cl-som-am57x-notes.md) and
   [hardware sources](hardware-primary-source-notes.md): documentation.
 - [USB device mode](mimic-usb-device-probe.md): unvalidated investigation.
-- [SD boot](cl-som-am57x-sd-boot-test.md): observed startup and keyboard
-  module requirements.
 - [Buildroot hardware validation](buildroot-hardware-validation.md): SD boot,
   keyboard, Wi-Fi, SSH, SSD mounts, and device nodes confirmed on the Mimic.
 - [Rust ADC validation](mimicd-live-validation.md) and

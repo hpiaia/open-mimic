@@ -1,0 +1,40 @@
+From: Humberto Piaia <betopiaia@gmail.com>
+Subject: [PATCH] input: preserve the ARM32 evdev layout with time64 libc
+
+Linux 4.1 embeds libc's timeval in the exported input_event definition.
+With musl time64 this describes 24-byte records, while the Pearl ARM32
+kernel emits 16-byte records. Backport the later Linux input timestamp
+layout and accessors so evdev consumers use the correct wire format.
+
+This changes exported build headers, not the running Pearl kernel.
+
+Upstream-Status: Backport [https://github.com/torvalds/linux/blob/v5.10/include/uapi/linux/input.h]
+Signed-off-by: Humberto Piaia <betopiaia@gmail.com>
+---
+--- a/include/uapi/linux/input.h
++++ b/include/uapi/linux/input.h
+@@ -14,6 +14,7 @@
+ #include <sys/ioctl.h>
+ #include <sys/types.h>
+ #include <linux/types.h>
++#include <asm/bitsperlong.h>
+ #endif
+ 
+ 
+@@ -22,7 +23,16 @@
+  */
+ 
+ struct input_event {
++#if (__BITS_PER_LONG != 32 || !defined(__USE_TIME_BITS64))
+ 	struct timeval time;
++#define input_event_sec time.tv_sec
++#define input_event_usec time.tv_usec
++#else
++	__kernel_ulong_t __sec;
++	__kernel_ulong_t __usec;
++#define input_event_sec __sec
++#define input_event_usec __usec
++#endif
+ 	__u16 type;
+ 	__u16 code;
+ 	__s32 value;

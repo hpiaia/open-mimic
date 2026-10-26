@@ -18,7 +18,7 @@ def main() -> int:
         parser.error("Install clang-format 18+ or set CLANG_FORMAT to its executable")
 
     project = Path(__file__).resolve().parents[1]
-    directories = ("common", "mimicd/src", "mimic-ui/src", "tests")
+    directories = ("common", "mimicd/src", "mimic/src", "tests")
     sources = sorted(
         path
         for directory in directories

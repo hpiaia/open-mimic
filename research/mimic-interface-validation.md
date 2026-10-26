@@ -45,10 +45,10 @@ interfaces in the kernel and Xorg.
 The first Xorg build registered the touchscreen but did not process touches.
 A target ABI probe reported a 24-byte `struct input_event`: Linux 4.1 headers
 embedded a libc `timeval` that is wider in current musl. A raw capture of three
-taps contained 36 valid 16-byte kernel records. The new compatibility package
+taps contained 36 valid 16-byte kernel records. The compatibility fix, now maintained as a native Buildroot source patch,
 backports the Linux time64-safe input event layout to the target headers and
 checks the ARM32 structure size at build time. libevdev, mtdev, Xorg and its
-evdev driver were rebuilt together. See [the ABI backport](../platform/compat/input-abi/).
+evdev driver were rebuilt together. See [the ABI backport](../platform/buildroot/patches/).
 
 Xorg explicitly preloads `fbdevhw` and `shadow` so musl can resolve the fbdev
 module's symbols. InputClass rules match evdev event nodes, avoiding duplicate

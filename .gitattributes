@@ -5,7 +5,6 @@
 *.img binary
 MLO binary
 zImage binary
-software/prebuilt/armhf/* binary
-platform/initramfs/base/bin/busybox binary
-platform/initramfs/base/sbin/dropbear* binary
-third_party/zt9101/** whitespace=-blank-at-eof,-trailing-space
+
+# Patches retain upstream context whitespace and line endings (JUCE uses CRLF).
+platform/buildroot/patches/**/*.patch -text whitespace=-blank-at-eof,-trailing-space,-space-before-tab

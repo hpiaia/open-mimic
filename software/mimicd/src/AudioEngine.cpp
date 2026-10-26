@@ -86,7 +86,7 @@ int audioSelfTest()
         throw std::runtime_error("Audio engine accepted dimensions outside JUCE's int range");
     }
     std::cout << "JUCE DSP offline check passed: 2 channels, 128 frames, 48000 Hz\n"
-                 "Pearl audio output is not connected; no sound was played.\n";
+                 "No audio device was opened; no sound was played.\n";
     return 0;
 }
 } // namespace mimic

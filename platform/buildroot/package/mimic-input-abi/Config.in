@@ -1,2 +1,0 @@
-config BR2_PACKAGE_MIMIC_INPUT_ABI
-	bool

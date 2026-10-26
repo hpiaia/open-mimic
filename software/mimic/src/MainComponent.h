@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #pragma once
 
+#include "AudioDebugPanel.h"
+#include "AuxInputPanel.h"
 #include "NetworkMonitor.h"
 #include "SystemMonitor.h"
+#include "WheelInput.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -19,6 +22,8 @@ public:
 private:
     void show(const juce::String& text);
     void timerCallback() override;
+    void updateHeadphoneVolume();
+    void toggleHeadphoneMute();
 
     struct TouchListener final : juce::MouseListener
     {
@@ -47,6 +52,13 @@ private:
     Theme theme;
     NetworkMonitor network;
     SystemMonitor system;
+    AudioDebugPanel audioDebug;
+    AuxInputPanel auxInput;
+    WheelInput wheel;
+    juce::Slider headphoneVolume;
+    juce::Label headphoneLevel;
+    juce::TextButton headphoneMute{"Mute"};
+    double unmutedVolume = 100.0;
     juce::Label title;
     juce::Label subtitle;
     juce::Label systemStatus;
@@ -59,7 +71,7 @@ private:
     juce::TextButton calibrate{"Calibrate pads"};
     juce::TextButton triggers{"Trigger monitor"};
     juce::TextButton audio{"Audio test"};
-    juce::TextButton touch{"Touch test"};
+    juce::TextButton aux{"Aux input"};
     juce::Rectangle<int> networkBounds;
     juce::Point<int> lastTouch;
     int taps = 0;

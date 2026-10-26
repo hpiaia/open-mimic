@@ -35,6 +35,16 @@ docker run --rm --platform linux/arm64 \
     cd /work/buildroot-2025.02.19
     make O=/work/output \
       BR2_EXTERNAL=/project/platform/buildroot open_mimic_defconfig
+    # Buildroot does not invalidate package stamps when external patches change.
+    # Re-extract patched sources and rebuild their consumers when the set changes.
+    patch_digest=$(find /project/platform/buildroot/patches -type f -name "*.patch" | \
+      LC_ALL=C sort | xargs sha256sum | sha256sum | cut -d " " -f 1)
+    patch_state=/work/output/.open-mimic-patches.sha256
+    if [ ! -f "$patch_state" ] || [ "$(cat "$patch_state")" != "$patch_digest" ]; then
+      make O=/work/output linux-headers-dirclean juce-framework-dirclean \
+        open-mimic-dirclean libevdev-dirclean mtdev-dirclean \
+        xdriver_xf86-input-evdev-dirclean xserver_xorg-server-dirclean
+    fi
     # Enabling C++ in an existing C-only toolchain needs a GCC rebuild.
     if [ -x /work/output/host/bin/arm-buildroot-linux-musleabihf-gcc ] &&
        [ ! -x /work/output/host/bin/arm-buildroot-linux-musleabihf-g++ ]; then
@@ -45,13 +55,8 @@ docker run --rm --platform linux/arm64 \
        [ ! -e /work/output/target/usr/lib/libstdc++.so.6 ]; then
       make O=/work/output gcc-final-reinstall
     fi
-    # Old evdev objects must be rebuilt when adding the time64 UAPI backport.
-    if [ ! -e /work/output/build/mimic-input-abi-1/.stamp_staging_installed ] &&
-       find /work/output/build -maxdepth 1 -type d -name "libevdev-*" -print -quit | grep -q .; then
-      make O=/work/output libevdev-dirclean mtdev-dirclean \
-        xdriver_xf86-input-evdev-dirclean xserver_xorg-server-dirclean
-    fi
     make O=/work/output BR2_JLEVEL=4
+    printf "%s\n" "$patch_digest" > "$patch_state"
     mkdir -p /project/build/buildroot-output/images
     cp /work/output/images/rootfs.ext4 /project/build/buildroot-output/images/
     cp /work/output/.config /project/build/buildroot-output/.config

@@ -41,3 +41,8 @@ container supplies native dependencies for JUCE's `juceaide` build helper;
 target libraries and Xorg are cross-compiled by Buildroot. Application targets
 use JUCE's official CMake helpers. Browser and OpenGL modules are not required
 for the initial software-rendered interface.
+
+Versioned upstream corrections live in [patches](patches/), applied through
+`BR2_GLOBAL_PATCH_DIR`. They fix the Linux 4.1 input-event ABI for musl time64
+and JUCE's native host-tool bootstrap. The application build checks the ARM32
+input-event size before configuration.

@@ -1,3 +1,2 @@
 source "$BR2_EXTERNAL_OPEN_MIMIC_PATH/package/juce-framework/Config.in"
 source "$BR2_EXTERNAL_OPEN_MIMIC_PATH/package/open-mimic/Config.in"
-source "$BR2_EXTERNAL_OPEN_MIMIC_PATH/package/mimic-input-abi/Config.in"

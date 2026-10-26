@@ -1,0 +1,22 @@
+#!/bin/sh
+
+pidfile=/run/mimic-aux-control.pid
+case "$1" in
+  start)
+    start-stop-daemon -S -o -b -m -p "$pidfile" -x /usr/bin/mimicd -O /var/log/mimic-aux.log -- aux-control
+    ;;
+  stop)
+    start-stop-daemon -K -o -p "$pidfile" -x /usr/bin/mimicd
+    attempts=0
+    while start-stop-daemon -K -t -q -p "$pidfile" -x /usr/bin/mimicd; do
+      attempts=$((attempts + 1))
+      [ "$attempts" -lt 20 ] || exit 1
+      sleep 0.1
+    done
+    rm -f "$pidfile"
+    ;;
+  restart)
+    "$0" stop && "$0" start
+    ;;
+  *) exit 2 ;;
+esac

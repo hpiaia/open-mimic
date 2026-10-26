@@ -13,7 +13,7 @@ printf '1\n' > /proc/sys/kernel/printk
 /bin/busybox stty opost onlcr icrnl echo icanon isig iexten
 printf '\033[0m\033[?25h\033[2J\033[H'
 # A FAT marker provides a keyboard-shell recovery path without editing ext4.
-if [ -x /usr/bin/mimic-ui ] && [ ! -e /mnt/sd/NOUI ]; then
+if [ -x /usr/bin/mimic ] && [ ! -e /mnt/sd/NOUI ]; then
   /usr/sbin/open-mimic-display
   /bin/busybox reset
   /bin/busybox stty sane
