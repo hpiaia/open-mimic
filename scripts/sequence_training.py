@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 import statistics
 
@@ -17,7 +18,7 @@ from inspect_pad_sequence import read_records
 LABELS = {"ambient": 0, "head-varied": 1, "rim-varied": 2, "rimshot-varied": 3}
 
 
-def load_sequence_trials(path: Path, mapping_override: dict | None = None) -> list[dict]:
+def load_sequence_trials(path: Path, mapping_override: dict | None = None, sensor_calibration: list[dict] | None = None) -> list[dict]:
     if path.stat().st_size > 65536:
         raise ValueError("sequence metadata exceeds size limit")
     metadata = json.loads(path.read_text())
@@ -76,6 +77,18 @@ def load_sequence_trials(path: Path, mapping_override: dict | None = None) -> li
                         for c in range(zones) if abs(sample[c] - baseline[c]) <= 4]
         noise = statistics.median(quiet_values) if quiet_values else 1.0
         threshold = max(8.0, 6.0 * noise + 4.0)
+        if sensor_calibration is not None:
+            if len(sensor_calibration) != 2:
+                raise ValueError("Expected two physical sensor calibration entries")
+            baseline = [float(value["baseline"]) for value in sensor_calibration]
+            thresholds = [float(value["threshold"]) for value in sensor_calibration]
+            if any(not math.isfinite(value) or not 0 <= value <= 4095 for value in baseline):
+                raise ValueError("Invalid calibrated sensor baseline")
+            if any(not math.isfinite(v) or v < 2 or v > 1024 for v in thresholds):
+                raise ValueError("Invalid calibrated onset threshold")
+            threshold = min(thresholds[:zones])
+        else:
+            thresholds = [threshold, threshold]
         amplitudes = [max(abs(v[0] - baseline[0]), abs(v[1] - baseline[1]) if zones == 2 else 0)
                       for v in samples]
 
@@ -95,16 +108,19 @@ def load_sequence_trials(path: Path, mapping_override: dict | None = None) -> li
                            "capture_sha256": raw_hash, "metadata_sha256": metadata_hash,
                            "example_id": identity, "segment_index": segment_index, "source_frame_start": start,
                            "source_frame_count": FRAMES, "source_gap_records": gaps,
-                           "segmentation": "offline_onset_candidates_v1", "extraction_threshold": threshold})
+                           "segmentation": "offline_onset_candidates_v2", "extraction_threshold": threshold,
+                           "extraction_thresholds": list(thresholds), "extraction_baselines": list(baseline)})
 
         if LABELS[phase] != 0:
             quiet = 0
             armed = False
             cooldown = 0
             for index, amplitude in enumerate(amplitudes):
+                above_threshold = any(abs(samples[index][sensor] - baseline[sensor]) >= thresholds[sensor]
+                                      for sensor in range(zones))
                 if cooldown:
                     cooldown -= 1
-                if amplitude < threshold:
+                if not above_threshold:
                     quiet += 1
                     if quiet >= 32 and cooldown == 0:
                         armed = True
@@ -114,9 +130,13 @@ def load_sequence_trials(path: Path, mapping_override: dict | None = None) -> li
                         append(index, LABELS[phase])
                         armed = False
                         cooldown = 128
-        # Quiet views are spread through the recording, without model-generated labels.
+        # Use the same per-sensor quiet predicate as onset rearming. A shared
+        # half-threshold incorrectly rejected quantized quiet signals on the
+        # noisier sensor (e.g. thresholds 2/3 with one-count rim noise).
+        # This is a quiet window, not proof of an absent physical weak strike.
         quiet_candidates = [i for i in range(0, len(samples) - FRAMES + 1, FRAMES)
-                            if max(amplitudes[i:i + FRAMES]) < threshold / 2]
+                            if all(abs(samples[j][sensor] - baseline[sensor]) < thresholds[sensor]
+                                   for j in range(i, i + FRAMES) for sensor in range(zones))]
         limit = 24 if phase == "ambient" else 8
         if quiet_candidates:
             positions = sorted({int(i * (len(quiet_candidates) - 1) / max(1, limit - 1))

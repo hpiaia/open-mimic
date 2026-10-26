@@ -18,6 +18,7 @@ import statistics
 from drum_model import evaluate, fit, predict, save_model, shared_features
 from train_drum_model import load_trial
 from sequence_training import load_sequence_trials
+from calibrate_pad import noise_profile
 
 
 def sha256(path: Path) -> str:
@@ -35,6 +36,34 @@ def collect_manifest(manifest_path: Path) -> tuple[list[dict], list[dict]]:
             directory = manifest_path.parent / directory
         directory = directory.resolve()
         verified = json.loads((directory / "download.json").read_text())["verified_files"]
+        response_cache = {}
+
+        def response_for(path, metadata):
+            key = (str(path.parent), metadata["pad"], metadata["session_id"])
+            if key in response_cache:
+                return response_cache[key]
+            matches = []
+            for relative_name, checksum in verified.items():
+                candidate = directory / relative_name
+                if candidate.parent != path.parent or candidate.suffix != ".json" or candidate.name == "ready.json":
+                    continue
+                if candidate.is_symlink() or candidate.stat().st_size > 65536 or sha256(candidate) != checksum:
+                    raise ValueError("verified ambient metadata changed")
+                document = json.loads(candidate.read_text())
+                if (document.get("format") == "open-mimic-pad-sequence-v1" and document.get("phase") == "ambient"
+                        and document.get("pad") == metadata["pad"] and document.get("session_id") == metadata["session_id"]):
+                    if (document["head"], document["rim"], document["zone_count"]) != (metadata["head"], metadata["rim"], metadata["zone_count"]):
+                        raise ValueError("ambient sensors differ from articulation sensors")
+                    payload = candidate.parent / document["capture"]
+                    relative_payload = str(payload.relative_to(directory))
+                    if payload.is_symlink() or Path(document["capture"]).name != document["capture"] or sha256(payload) != verified.get(relative_payload):
+                        raise ValueError("verified ambient payload changed")
+                    matches.append(noise_profile(candidate, document)["sensors"])
+            if len(matches) > 1:
+                raise ValueError("multiple ambient recordings in one calibration session")
+            response_cache[key] = matches[0] if matches else None
+            return response_cache[key]
+
         for relative, expected_hash in sorted(verified.items()):
             if not relative.endswith(".json"):
                 continue
@@ -67,7 +96,8 @@ def collect_manifest(manifest_path: Path) -> tuple[list[dict], list[dict]]:
                 raise ValueError(f"archive integrity failure: {capture}: {error}") from error
             try:
                 if metadata["format"] == "open-mimic-pad-sequence-v1":
-                    candidates = load_sequence_trials(path, desired if original != desired else None)
+                    candidates = load_sequence_trials(path, desired if original != desired else None,
+                                                      sensor_calibration=response_for(path, metadata) if original == desired else None)
                 else:
                     candidates = [load_trial(path, desired if original != desired else None)]
             except (OSError, ValueError, KeyError, TypeError) as error:

@@ -40,3 +40,19 @@ wizard records two seconds of ambient noise, then twenty seconds per articulatio
 gaps; `sequence_training.py` extracts reproducible labeled onset candidates for
 the classifier while preserving the source recordings. See
 `research/calibration-wizard.md` for the format and evaluation limits.
+
+Response calibration is fitted automatically from each complete verified session
+before the module releases its SD copy. The latest successful per-pad response
+and per-session diagnostics are stored in `.profiles/`; the module persists its
+own copy for live operation without the Mac. Missing hits or insufficient force
+variation retain the previous profile and are reported on screen. See
+`research/pad-response-calibration.md` for formulas and validation limits.
+
+Inspect the latest session for one pad in the official Rerun viewer:
+
+```sh
+scripts/inspect_pads.sh --pad tom1 --open
+```
+
+Use `--all-sessions` to export every verified session. See
+`research/pad-inspection.md` for the viewer controls, output files and timing limits.

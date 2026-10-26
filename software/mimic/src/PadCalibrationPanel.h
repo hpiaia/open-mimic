@@ -43,6 +43,7 @@ private:
         juce::String id, name, instrument;
         int zones = 1, head = -1, rim = -1, channel = 10;
         int headNote = -1, rimNote = -1, rimshotNote = -1;
+        juce::String responseState, responseSession, responseError;
     };
 
     void timerCallback() override;
@@ -69,7 +70,8 @@ private:
     std::vector<std::unique_ptr<juce::TextButton>> padButtons;
     std::array<int, 32> meters{};
     juce::Rectangle<int> monitorBounds;
-    juce::String selectedId, servicePad, state, phase, upload, error, archiveError, commandError;
+    juce::String selectedId, servicePad, serviceSession, state, phase, upload, error, archiveError,
+        commandError;
     int captured = 0, target = 12, step = 0, steps = 0, countdown = 0;
     bool continuous = false;
     bool engineEnabled = false;

@@ -1,0 +1,8 @@
+# Host-only viewer and SDK; never installed on the Mimic.
+attrs==26.1.0
+numpy==2.5.4
+pillow==13.0.0
+psutil==7.2.2
+pyarrow==26.0.0
+rerun-sdk==0.40.0
+typing-extensions==4.16.0

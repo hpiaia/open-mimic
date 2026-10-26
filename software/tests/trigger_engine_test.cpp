@@ -132,6 +132,118 @@ int main()
             throw std::runtime_error(
                 "Four-class model rimshot was not preserved as a separate event");
         }
+        mimic::PadResponse response;
+        response.calibrated = true;
+        response.sensors = {{{0.5f, 1.0f, 3.0f}, {0.5f, 1.0f, 3.0f}}};
+        response.articulations = {
+            {{8.0f, 800.0f, 1.0f, 20}, {12.0f, 500.0f, 1.0f, 20}, {30.0f, 1500.0f, 1.0f, 20}}};
+        const auto calibratedEvent = [&](float headPeak, float rimPeak, unsigned zone)
+        {
+            mimic::TriggerEngine calibrated(
+                [zone](const mimic::DrumFeatures&)
+                {
+                    mimic::DrumPrediction value;
+                    value.valid = true;
+                    value.classIndex = zone;
+                    value.probabilities.fill(0.0f);
+                    value.probabilities[zone] = 1.0f;
+                    return value;
+                });
+            calibrated.configure({{0, 1, 2, response}});
+            std::array<std::uint16_t, 16> sample{};
+            sample.fill(2);
+            for (unsigned j = 0; j < 256; ++j)
+            {
+                calibrated.processFrame(0, sample);
+            }
+            calibrated.beginBatch();
+            sample[0] = static_cast<std::uint16_t>(2 + headPeak);
+            sample[1] = static_cast<std::uint16_t>(2 + rimPeak);
+            for (unsigned j = 0; j < 32; ++j)
+            {
+                calibrated.processFrame(0, sample);
+            }
+            if (calibrated.eventCount() != 1)
+            {
+                throw std::runtime_error("Calibrated sensitivity lost a valid hit");
+            }
+            return calibrated.event(0);
+        };
+        if (calibratedEvent(5, 0, 1).velocity != 1 || calibratedEvent(800, 20, 1).velocity != 127
+            || calibratedEvent(50, 500, 2).velocity != 127
+            || calibratedEvent(1500, 1000, 3).velocity != 127)
+        {
+            throw std::runtime_error("Per-articulation velocity or low-level onset differs");
+        }
+        // Dominant cross-coupled energy must not set a head hit's velocity.
+        if (calibratedEvent(8, 500, 1).velocity != 1)
+        {
+            throw std::runtime_error("Head velocity incorrectly used the other sensor's peak");
+        }
+        // A strike during profile activation must not become the new quiet baseline.
+        response.sensors[0].baseline = response.sensors[1].baseline = 2.0f;
+        mimic::TriggerEngine activation(
+            [](const mimic::DrumFeatures&)
+            {
+                mimic::DrumPrediction value;
+                value.valid = true;
+                value.classIndex = 1;
+                value.probabilities = {0.0f, 1.0f, 0.0f, 0.0f};
+                return value;
+            });
+        activation.configure({{0, 1, 2, response}});
+        frame.fill(2);
+        frame[0] = 700;
+        for (unsigned i = 0; i < 64; ++i)
+        {
+            activation.processFrame(0, frame);
+        }
+        frame.fill(2);
+        for (unsigned i = 0; i < 256; ++i)
+        {
+            activation.processFrame(0, frame);
+        }
+        activation.beginBatch();
+        frame[0] = 802;
+        for (unsigned i = 0; i < 32; ++i)
+        {
+            activation.processFrame(0, frame);
+        }
+        if (activation.eventCount() != 1 || activation.event(0).velocity != 127)
+        {
+            throw std::runtime_error("A startup strike contaminated the calibrated quiet baseline");
+        }
+        mimic::TriggerEngine bootstrap(
+            [](const mimic::DrumFeatures&)
+            {
+                mimic::DrumPrediction result;
+                result.valid = true;
+                result.classIndex = 1;
+                result.probabilities = {0.0f, 1.0f, 0.0f, 0.0f};
+                return result;
+            });
+        bootstrap.configure({{0, 1, 2, {}}});
+        frame.fill(2);
+        frame[0] = 700;
+        for (unsigned i = 0; i < 64; ++i)
+        {
+            bootstrap.processFrame(0, frame);
+        }
+        frame.fill(2);
+        for (unsigned i = 0; i < 256; ++i)
+        {
+            bootstrap.processFrame(0, frame);
+        }
+        bootstrap.beginBatch();
+        frame[0] = 802;
+        for (unsigned i = 0; i < 32; ++i)
+        {
+            bootstrap.processFrame(0, frame);
+        }
+        if (bootstrap.eventCount() != 1)
+        {
+            throw std::runtime_error("Uncalibrated startup strike prevented later quiet recovery");
+        }
         std::cout << "Live event segmentation, head/rim, mono mask, retrigger and clipping checks "
                      "passed\n";
         return 0;

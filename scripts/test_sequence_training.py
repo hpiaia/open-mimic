@@ -92,6 +92,20 @@ class SequenceTests(unittest.TestCase):
             self.assertFalse(excluded)
             self.assertGreater(sum(t["label"] == 1 for t in trials), 1)
 
+    def test_quantized_quiet_channels_use_their_own_thresholds(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = fixture(root, "ambient")
+            sensors = [{"baseline": 2, "threshold": 2}, {"baseline": 1, "threshold": 3}]
+            trials = load_sequence_trials(path, sensor_calibration=sensors)
+            self.assertTrue(trials)
+            self.assertTrue(all(t['label'] == 0 for t in trials))
+            self.assertTrue(all(t['extraction_thresholds'] == [2, 3] for t in trials))
+            # A value exactly at the rim's own onset threshold is not quiet.
+            sensors[1]['baseline'] = 5
+            with self.assertRaisesRegex(ValueError, 'no usable'):
+                load_sequence_trials(path, sensor_calibration=sensors)
+
 
 if __name__ == "__main__":
     unittest.main()

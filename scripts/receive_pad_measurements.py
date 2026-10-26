@@ -64,6 +64,10 @@ def verified_files(directory: Path, expected: dict[str, str]):
         raise ValueError("local session has missing or unexpected files")
 
 
+class CalibrationRejected(ValueError):
+    pass
+
+
 class Receiver:
     def __init__(self, host: str, output: Path):
         self.host, self.output = host, output
@@ -121,7 +125,99 @@ class Receiver:
             if not report.get("device_captures_removed"):
                 yield pad, session
 
+    def response_result(self, pad: str, contents: str, *, failed: bool, expected=None):
+        token = uuid.uuid4().hex
+        suffix = "error" if failed else "profile"
+        self.remote(f"mkdir -p {ROOT}/profiles/staging; cat > {ROOT}/profiles/staging/{token}.{suffix}",
+                    content=contents.encode(), timeout=15)
+        self.command("profile-failed" if failed else "profile-load", pad, token)
+        for _ in range(40):
+            state = json.loads(self.remote(f"cat {RUNTIME}/status.json", timeout=15))
+            definition = next((row for row in state.get("pads", []) if row["id"] == pad), {})
+            response = definition.get("calibration", {})
+            if response.get("attempt") != token:
+                time.sleep(.2)
+                continue
+            if failed and response.get("error") == contents[:500]:
+                return
+            if not failed:
+                if (response.get("state") == "active" and response.get("session") == expected["session"]
+                        and response.get("sourceHash") == expected["source_hash"] and not response.get("error")):
+                    return
+                if response.get("error"):
+                    raise CalibrationRejected(response["error"])
+            time.sleep(.2)
+        raise TimeoutError("The module did not confirm its response profile; check that its software is current")
+
+    def calibrate(self, pad: str, session: str, destination: Path, report: dict):
+        from calibrate_pad import ALGORITHM, RecordingIntegrityError, fit_session, native_profile
+        previous = report.get("response_calibration", {})
+        if previous.get("algorithm") == ALGORITHM and previous.get("state") in ("applied", "unavailable", "legacy"):
+            return
+        guided = []
+        for name in report["verified_files"]:
+            if name.endswith(".json") and name != "ready.json":
+                document = json.loads((destination / name).read_text())
+                if document.get("format") == "open-mimic-pad-sequence-v1":
+                    guided.append(document)
+        if not guided:
+            report["response_calibration"] = {"algorithm": ALGORITHM, "state": "legacy"}
+            publish_json(destination / "download.json", report)
+            return
+        print(f"Calibrating pad response: {pad}", flush=True)
+        output = self.output / ".profiles"
+        output.mkdir(exist_ok=True)
+        attempts = output / pad
+        attempts.mkdir(exist_ok=True)
+        try:
+            profile = fit_session(destination)
+            if profile["pad"] != pad or profile["session"] != session:
+                raise ValueError("Calibration identity differs from its verified archive")
+        except RecordingIntegrityError:
+            raise
+        except (ValueError, KeyError, TypeError) as error:
+            reason = str(error)[:500]
+            self.response_result(pad, reason, failed=True)
+            result = {"algorithm": ALGORITHM, "state": "unavailable", "reason": reason}
+            publish_json(attempts / (session + ".json"), result)
+            report["response_calibration"] = result
+            publish_json(destination / "download.json", report)
+            print(f"Recording saved; previous response retained: {reason}", flush=True)
+            return
+        try:
+            self.response_result(pad, native_profile(profile), failed=False, expected=profile)
+        except CalibrationRejected as error:
+            result = {"algorithm": ALGORITHM, "state": "unavailable", "reason": str(error)}
+            publish_json(attempts / (session + ".json"), result)
+            report["response_calibration"] = result
+            publish_json(destination / "download.json", report)
+            print(f"Recording saved; previous response retained: {error}", flush=True)
+            return
+        publish_json(attempts / (session + ".json"), profile)
+        publish_json(output / (pad + ".json"), profile)
+        report["response_calibration"] = {"algorithm": ALGORITHM, "state": "applied", "source_hash": profile["source_hash"]}
+        publish_json(destination / "download.json", report)
+        print(f"Response applied: {pad}; sensitivity and per-articulation velocity are calibrated", flush=True)
+
+    def calibrate_existing(self):
+        latest = {}
+        for path in self.output.glob("*/*/download.json"):
+            pad, session = path.parent.parent.name, path.parent.name
+            if not IDENTITY.fullmatch(f"{pad}/{session}"):
+                continue
+            report = json.loads(path.read_text())
+            if not report.get("device_captures_removed"):
+                continue
+            if pad not in latest or report.get("utc", "") > latest[pad][2].get("utc", ""):
+                latest[pad] = (session, path.parent, report)
+        for pad, (session, destination, report) in latest.items():
+            self.calibrate(pad, session, destination, report)
+
     def acknowledge(self, pad: str, session: str, destination: Path, report: dict):
+        self.calibrate(pad, session, destination, report)
+        # Recheck the durable archive immediately before releasing its SD source,
+        # including when calibration was unavailable or intentionally skipped.
+        verified_files(destination, report["verified_files"])
         self.command("archive-ack", pad, session)
         for _ in range(50):
             acknowledged = self.remote(f"test ! -f {ROOT}/archive-receipts/{pad}/{session}.json || printf ack")
@@ -235,6 +331,7 @@ def main() -> int:
     try:
         while True:
             try:
+                receiver.calibrate_existing()
                 for pad, session in receiver.pending_archives():
                     receiver.archive(pad, session)
                 for pad, session in receiver.identities(args.import_existing):

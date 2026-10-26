@@ -283,6 +283,7 @@ void PadCalibrationPanel::refresh()
     error = data.getProperty("error", "").toString();
     state = data.getProperty("state", "").toString();
     phase = data.getProperty("phase", "").toString();
+    serviceSession = data.getProperty("sessionId", "").toString();
     servicePad = data.getProperty("selectedPad", "").toString();
     active = static_cast<bool>(data.getProperty("wizardActive", false)) || state == "capturing";
     continuous = static_cast<bool>(data.getProperty("continuous", false));
@@ -314,7 +315,10 @@ void PadCalibrationPanel::refresh()
                                static_cast<int>(p["midiChannel"]),
                                static_cast<int>(p["headNote"]),
                                static_cast<int>(p["rimNote"]),
-                               static_cast<int>(p["rimshotNote"])});
+                               static_cast<int>(p["rimshotNote"]),
+                               p["calibration"]["state"].toString(),
+                               p["calibration"]["session"].toString(),
+                               p["calibration"]["error"].toString()});
         }
     }
     const bool rebuild = pads.size() != updated.size();
@@ -359,6 +363,13 @@ void PadCalibrationPanel::update()
                      : p ? p->name + (mapping ? "  /  SD3 " + p->instrument : "")
                          : "",
                      juce::dontSendNotification);
+    if (setup && p)
+    {
+        const auto response = p->responseState == "active"  ? "Response calibrated"
+                              : p->responseState == "stale" ? "Sensor type changed: recalibrate"
+                                                            : "Response not calibrated yet";
+        subtitle.setText(p->name + "  /  " + response, juce::dontSendNotification);
+    }
     close.setButtonText(page == Page::selection || mode == Mode::monitor ? "Close" : "Back");
     for (std::size_t i = 0; i < padButtons.size(); ++i)
     {
@@ -398,13 +409,16 @@ void PadCalibrationPanel::update()
     {
         instruction.setText(done ? "Calibration recorded" : instructionsFor(phase),
                             juce::dontSendNotification);
-        counter.setText(done ? (upload == "uploaded" ? "Saved on Mac" : "Saving to Mac...")
-                        : state == "countdown"        ? "Get ready: " + juce::String(countdown)
-                        : state == "sequence-writing" ? "Saving..."
-                        : continuous
-                            ? juce::String(captured) + " / " + juce::String(target) + " seconds"
-                            : juce::String(captured) + " / " + juce::String(target),
-                        juce::dontSendNotification);
+        const bool responseApplied =
+            p && p->responseState == "active" && p->responseSession == serviceSession;
+        counter.setText(
+            done ? (upload == "uploaded" ? (responseApplied ? "Calibrated" : "Saved on Mac")
+                                         : "Saving to Mac...")
+            : state == "countdown"        ? "Get ready: " + juce::String(countdown)
+            : state == "sequence-writing" ? "Saving..."
+            : continuous ? juce::String(captured) + " / " + juce::String(target) + " seconds"
+                         : juce::String(captured) + " / " + juce::String(target),
+            juce::dontSendNotification);
     }
     juce::String footer =
         mapping ? "SD3 defaults: center, rim only and rimshot. Notes are editable." : "";
@@ -426,6 +440,22 @@ void PadCalibrationPanel::update()
             archiveOnline
                 ? "Mac receiver connected. Recordings transfer automatically after this pad."
                 : "Mac receiver offline. Recordings will remain on the SD until it reconnects.";
+    }
+    if (done && upload == "uploaded" && p)
+    {
+        if (p->responseState == "active" && p->responseSession == serviceSession
+            && p->responseError.isEmpty())
+        {
+            footer = "Sensitivity and velocity applied. Ready for the next pad.";
+        }
+        else if (!p->responseError.isEmpty())
+        {
+            footer = "Recording saved. Response unchanged: " + p->responseError;
+        }
+    }
+    if (setup && p && !p->responseError.isEmpty())
+    {
+        footer = "Repeat calibration: " + p->responseError;
     }
     if (done && upload != "uploaded" && !archiveError.isEmpty())
     {

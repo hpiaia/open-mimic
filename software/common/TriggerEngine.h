@@ -2,6 +2,7 @@
 #pragma once
 
 #include "DrumModel.h"
+#include "PadCalibration.h"
 
 #include <array>
 #include <cstddef>
@@ -16,6 +17,7 @@ struct TriggerPad
     int head = -1;
     int rim = -1;
     int zones = 2;
+    PadResponse response;
 };
 
 struct TriggerEvent
@@ -70,10 +72,14 @@ private:
         unsigned warmup = 0;
         unsigned quiet = 0;
         unsigned cooldown = 0;
+        unsigned startupUnsettled = 0;
         float noise = 1.0f;
+        std::array<float, 2> sensorNoise{1.0f, 1.0f};
+        std::array<float, 2> sensorPeaks{};
         float peak = 0.0f;
         bool pending = false;
         bool armed = false;
+        bool initialQuietFound = false;
     };
 
     Predictor predictor;

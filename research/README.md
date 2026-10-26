@@ -20,6 +20,15 @@ Core references for developing the new system:
   page index, and proposed calibration, waveform-model and MIDI-map work.
 - [Calibration wizard](calibration-wizard.md): fixed ADC routing, SD3 notes,
   automatic guided collection, rapid continuous takes and verified Mac archival.
+- [Pad response calibration](pad-response-calibration.md): automatic per-sensor
+  sensitivity and per-articulation velocity profiles, separate from classifier weights.
+- [New capture training evaluation](new-capture-training-2026-10-26.md): 21 fresh
+  sessions, four-class TensorFlow training, whole-pad holdouts, ARM verification
+  and reasons the candidate was not promoted.
+- [Pad recording inspection](pad-inspection.md): official Rerun viewer, verified
+  OMSEQ export, sensor waveforms, training windows and gap provenance.
+- [Temporal classifier comparison](temporal-classifier.md): corrected quiet
+  windows, TensorFlow CNN/linear development folds, ARM checks and promotion decision.
 - [Pad calibration research](pad-calibration.md): recording format, model training
   and historical numerical experiments.
 - [Boot and storage](cl-som-am57x-sd-boot-test.md): how SD boot was established

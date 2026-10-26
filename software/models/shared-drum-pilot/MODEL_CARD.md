@@ -114,3 +114,9 @@ Single-zone pads retain both physical channels but only their primary sensor
 participates in detection and classification. The known crosstalk limitations
 above still apply: enabling the engine does not constitute validation for all
 pads, trigger models, rolls or simultaneous playing patterns.
+
+
+Per-pad response profiles now calibrate sensor thresholds and amplitude-to-velocity
+ranges from verified guided recordings. These settings are separate from this
+classifier's weights. Uncalibrated pads retain the prior event/velocity policy;
+classification confidence and the known crosstalk limitations still apply.

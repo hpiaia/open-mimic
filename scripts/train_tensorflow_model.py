@@ -24,14 +24,30 @@ from train_shared_drum_model import collect_manifest, examples, partition
 LABELS = ['background', 'head', 'rim', 'rimshot']
 
 
-def make_model(x: np.ndarray, classes: int = 3) -> tf.keras.Model:
+def make_model(x: np.ndarray, classes: int = 3, architecture: str = 'linear') -> tf.keras.Model:
     mean = x.mean(axis=0).astype(np.float32)
     scale = (1.0 / np.maximum(x.std(axis=0), 0.05)).astype(np.float32)
     inputs = tf.keras.Input(shape=(69,), name='sensor_features', dtype='float32')
     normalized = (inputs - mean) * scale
-    # Keep the existing linear baseline architecture during the framework migration.
-    logits = tf.keras.layers.Dense(classes, kernel_initializer='zeros', bias_initializer='zeros',
-                                   kernel_regularizer=tf.keras.regularizers.L2(0.005), name='classifier')(normalized)
+    if architecture == 'linear':
+        logits = tf.keras.layers.Dense(classes, kernel_initializer='zeros', bias_initializer='zeros',
+                                       kernel_regularizer=tf.keras.regularizers.L2(0.005), name='classifier')(normalized)
+    elif architecture == 'cnn':
+        # Keep the production [1,69] contract and 32-frame acquisition latency.
+        # Feature layout is channel-major, so transpose into (time, sensors).
+        waveform = tf.keras.layers.Reshape((2, 32))(inputs[:, :64])
+        waveform = tf.keras.layers.Permute((2, 1))(waveform)
+        waveform = tf.keras.layers.Conv1D(12, 5, padding='same', activation='relu')(waveform)
+        waveform = tf.keras.layers.MaxPooling1D(2)(waveform)
+        waveform = tf.keras.layers.Conv1D(16, 3, padding='same', activation='relu')(waveform)
+        shape = tf.keras.layers.Concatenate()([
+            tf.keras.layers.GlobalAveragePooling1D()(waveform),
+            tf.keras.layers.GlobalMaxPooling1D()(waveform), normalized[:, 64:]])
+        hidden = tf.keras.layers.Dense(24, activation='relu', kernel_regularizer=tf.keras.regularizers.L2(.001))(shape)
+        hidden = tf.keras.layers.Dropout(.1)(hidden)
+        logits = tf.keras.layers.Dense(classes, name='classifier')(hidden)
+    else:
+        raise ValueError('architecture must be linear or cnn')
     probabilities = tf.keras.layers.Softmax()(logits)
     gate = tf.keras.ops.concatenate([tf.keras.ops.ones_like(inputs[:, :2]), *[inputs[:, 68:69] for _ in range(classes - 2)]], axis=1)
     masked = probabilities * gate
@@ -39,7 +55,8 @@ def make_model(x: np.ndarray, classes: int = 3) -> tf.keras.Model:
     return tf.keras.Model(inputs, outputs, name='shared_drum')
 
 
-def fit_model(rows: list[dict], epochs: int, classes: int | None = None) -> tf.keras.Model:
+def fit_model(rows: list[dict], epochs: int, classes: int | None = None,
+              architecture: str = 'linear', balance_sessions: bool = False) -> tf.keras.Model:
     tf.keras.utils.set_random_seed(1729)
     data = examples(rows, augment=True)
     x = np.asarray([values for values, _ in data], dtype=np.float32)
@@ -49,16 +66,30 @@ def fit_model(rows: list[dict], epochs: int, classes: int | None = None) -> tf.k
     if np.any(counts < 8):
         raise ValueError('training needs eight examples of each class')
     weights = (len(data) / (classes * counts[y])).astype(np.float32)
-    model = make_model(x, classes)
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.03, epsilon=1e-8),
+    if balance_sessions:
+        cells = []
+        for row in rows:
+            key = (row['group'], row['session'], row['label'])
+            cells.append(key)
+            if row.get('zone_count', 2) == 2 and row['label'] < 2:
+                cells.append(key)
+        cell_counts = Counter(cells)
+        class_cells = Counter(key[2] for key in cell_counts)
+        weights = np.asarray([len(data) / (classes * class_cells[key[2]] * cell_counts[key])
+                              for key in cells], dtype=np.float32)
+    model = make_model(x, classes, architecture)
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=.003 if architecture == 'cnn' else .03, epsilon=1e-8),
                   loss=tf.keras.losses.SparseCategoricalCrossentropy())
     options = tf.data.Options()
     options.threading.private_threadpool_size = 1
     options.threading.max_intra_op_parallelism = 1
     options.autotune.enabled = False
     options.experimental_deterministic = True
-    dataset = tf.data.Dataset.from_tensor_slices((x, y, weights)).batch(len(data)).with_options(options)
-    history = model.fit(dataset, epochs=epochs, verbose=0)
+    dataset = tf.data.Dataset.from_tensor_slices((x, y, weights))
+    if architecture == 'cnn':
+        dataset = dataset.shuffle(len(data), seed=1729, reshuffle_each_iteration=True)
+    dataset = dataset.batch(256 if architecture == 'cnn' else len(data)).with_options(options)
+    history = model.fit(dataset, epochs=epochs, verbose=0, shuffle=False)
     if not np.all(np.isfinite(history.history['loss'])):
         raise ValueError('non-finite Keras training loss')
 
@@ -112,7 +143,9 @@ def export(model, folder: Path, trials: list[dict]):
             maximum = max(maximum, difference)
             if difference > 0.00002 or actual.argmax() != expected.argmax():
                 raise ValueError('LiteRT conversion changed a prediction')
-            cases.append({'capture_sha256': trial['capture_sha256'], 'secondary_present': secondary,
+            cases.append({'example_id': trial.get('example_id', trial['capture_sha256']),
+                          'label': trial['label'], 'pad': trial['pad'], 'session': trial['session'],
+                          'capture_sha256': trial['capture_sha256'], 'secondary_present': secondary,
                           'features': x[0].tolist(), 'probabilities': actual.tolist()})
     (folder / 'conversion-cases.json').write_text(json.dumps(cases) + '\n')
     return {'cases': len(cases), 'maximum_probability_difference': maximum,

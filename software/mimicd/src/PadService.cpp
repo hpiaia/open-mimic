@@ -5,6 +5,7 @@
 #include "Capture.h"
 #include "ExclusiveOutputFile.h"
 #include "MidiControl.h"
+#include "PadCalibration.h"
 #include "PadCapture.h"
 #include "PadControl.h"
 #include "PadRouting.h"
@@ -177,6 +178,9 @@ struct PadDefinition
     int rimNote = -1;
     int rimshotNote = -1;
     std::string sd3Instrument;
+    PadCalibration calibration;
+    std::string calibrationError;
+    std::string calibrationAttempt;
 };
 
 bool validPad(const PadDefinition& pad)
@@ -543,7 +547,9 @@ public:
                             route.headNote,
                             route.rimNote,
                             route.rimshotNote,
-                            route.sd3Instrument});
+                            route.sd3Instrument,
+                            {},
+                            {}});
         }
         try
         {
@@ -552,6 +558,24 @@ public:
         catch (const std::exception& exception)
         {
             error = "Saved pad configuration: " + std::string(exception.what());
+        }
+        std::filesystem::create_directories(dataDirectory / "profiles" / "staging");
+        for (auto& pad : pads)
+        {
+            try
+            {
+                const auto path = dataDirectory / "profiles" / (pad.id + ".profile");
+                if (std::filesystem::exists(path))
+                {
+                    pad.calibration = parseProfile(path, pad);
+                }
+                pad.calibrationError =
+                    readSmallText(dataDirectory / "profiles" / (pad.id + ".error"));
+            }
+            catch (const std::exception& exception)
+            {
+                pad.calibrationError = exception.what();
+            }
         }
 #ifdef MIMIC_USE_LITERT
         engineRequested = true;
@@ -765,6 +789,44 @@ public:
                 wizardActive = true;
                 prepareWizardStep();
                 midi.send("panic\n");
+            }
+            else if (verb == "profile-reset")
+            {
+                std::string id;
+                input >> id;
+                requireEnd(input);
+                auto found = std::find_if(pads.begin(),
+                                          pads.end(),
+                                          [&](const PadDefinition& pad) { return pad.id == id; });
+                if (found == pads.end())
+                {
+                    throw std::runtime_error("Unknown calibration pad");
+                }
+                std::filesystem::remove(dataDirectory / "profiles" / (id + ".profile"));
+                std::filesystem::remove(dataDirectory / "profiles" / (id + ".error"));
+                found->calibration = {};
+                found->calibrationError.clear();
+                found->calibrationAttempt.clear();
+                configureLive();
+            }
+            else if (verb == "profile-load" || verb == "profile-failed")
+            {
+                std::string id, token;
+                input >> id >> token;
+                requireEnd(input);
+                if (token.size() != 32
+                    || token.find_first_not_of("0123456789abcdef") != std::string::npos)
+                {
+                    throw std::runtime_error("Invalid calibration transfer identity");
+                }
+                auto found = std::find_if(pads.begin(),
+                                          pads.end(),
+                                          [&](const PadDefinition& pad) { return pad.id == id; });
+                if (found == pads.end())
+                {
+                    throw std::runtime_error("Unknown calibration pad");
+                }
+                receiveProfile(*found, token, verb == "profile-failed");
             }
             else if (verb == "archive-seal" || verb == "archive-ack")
             {
@@ -1076,7 +1138,8 @@ public:
                    << ",\"rim\":" << pad.rim << ",\"midiChannel\":" << pad.midiChannel
                    << ",\"headNote\":" << pad.headNote << ",\"rimNote\":" << pad.rimNote
                    << ",\"rimshotNote\":" << pad.rimshotNote
-                   << ",\"sd3Instrument\":" << quoted(pad.sd3Instrument) << '}';
+                   << ",\"sd3Instrument\":" << quoted(pad.sd3Instrument)
+                   << ",\"calibration\":" << calibrationJson(pad) << '}';
         }
         output << "],\"meters\":[";
         for (std::size_t index = 0; index < displayPeaks.size(); ++index)
@@ -1350,12 +1413,124 @@ private:
         }
     }
 
+    static std::string readSmallText(const std::filesystem::path& path)
+    {
+        if (!std::filesystem::exists(path))
+        {
+            return {};
+        }
+        if (std::filesystem::is_symlink(path) || std::filesystem::file_size(path) > 8192)
+        {
+            throw std::runtime_error("Calibration file exceeds safe size or path bounds");
+        }
+        std::ifstream input(path);
+        if (!input)
+        {
+            throw std::runtime_error("Could not read calibration file");
+        }
+        return std::string(std::istreambuf_iterator<char>(input), {});
+    }
+
+    static PadCalibration parseProfile(const std::filesystem::path& path, const PadDefinition& pad)
+    {
+        std::istringstream input(readSmallText(path));
+        auto calibration = readPadCalibration(input);
+        if (calibration.pad != pad.id || calibration.head != pad.head || calibration.rim != pad.rim)
+        {
+            throw std::runtime_error("Calibration profile does not match the physical input");
+        }
+        return calibration;
+    }
+
+    void receiveProfile(PadDefinition& pad, const std::string& token, bool failed)
+    {
+        const auto staged =
+            dataDirectory / "profiles" / "staging" / (token + (failed ? ".error" : ".profile"));
+        try
+        {
+            if (failed)
+            {
+                const auto message = readSmallText(staged);
+                if (message.empty())
+                {
+                    throw std::runtime_error("Empty calibration failure report");
+                }
+                pad.calibrationError = message.substr(0, 500);
+                atomicText(dataDirectory / "profiles" / (pad.id + ".error"), pad.calibrationError);
+            }
+            else
+            {
+                auto calibration = parseProfile(staged, pad);
+                if (calibration.zones != pad.zoneCount)
+                {
+                    throw std::runtime_error("Sensor type changed; record a new calibration");
+                }
+                const auto contents = writePadCalibration(calibration);
+                const bool changed = !pad.calibration.response.calibrated
+                                     || writePadCalibration(pad.calibration) != contents;
+                if (changed)
+                {
+                    atomicText(dataDirectory / "profiles" / (pad.id + ".profile"), contents);
+                    pad.calibration = std::move(calibration);
+                    configureLive();
+                }
+                pad.calibrationError.clear();
+                std::filesystem::remove(dataDirectory / "profiles" / (pad.id + ".error"));
+            }
+        }
+        catch (const std::exception& exception)
+        {
+            // A failed replacement must never erase an already working response.
+            pad.calibrationError = exception.what();
+            atomicText(dataDirectory / "profiles" / (pad.id + ".error"), pad.calibrationError);
+        }
+        pad.calibrationAttempt = token;
+        std::error_code ignored;
+        std::filesystem::remove(staged, ignored);
+    }
+
+    static std::string calibrationJson(const PadDefinition& pad)
+    {
+        const auto& profile = pad.calibration;
+        const bool calibrated = profile.response.calibrated;
+        const bool active = calibrated && profile.zones == pad.zoneCount;
+        std::ostringstream output;
+        output << "{\"state\":"
+               << quoted(active       ? "active"
+                         : calibrated ? "stale"
+                                      : "none")
+               << ",\"session\":" << quoted(profile.session)
+               << ",\"sourceHash\":" << quoted(profile.sourceHash)
+               << ",\"attempt\":" << quoted(pad.calibrationAttempt)
+               << ",\"error\":" << quoted(pad.calibrationError)
+               << ",\"headThreshold\":" << (active ? profile.response.sensors[0].threshold : 16.0f)
+               << ",\"rimThreshold\":" << (active ? profile.response.sensors[1].threshold : 16.0f)
+               << ",\"velocityRanges\":[";
+        for (unsigned index = 0; index < 3; ++index)
+        {
+            if (index != 0)
+            {
+                output << ',';
+            }
+            const auto& range = profile.response.articulations[index];
+            output << "{\"minimum\":" << range.minimum << ",\"maximum\":" << range.maximum
+                   << ",\"samples\":" << range.samples << '}';
+        }
+        output << "]}";
+        return output.str();
+    }
+
     void configureLive()
     {
         std::vector<TriggerPad> inputs;
         for (const auto& pad : pads)
         {
-            inputs.push_back({pad.head, pad.rim, pad.zoneCount});
+            auto response = pad.calibration.response;
+            if (pad.calibration.zones != pad.zoneCount)
+            {
+                response.calibrated = false;
+            }
+            inputs.push_back({pad.head, pad.rim, pad.zoneCount, response});
         }
         try
         {

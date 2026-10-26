@@ -49,8 +49,9 @@ Stopping preserves completed takes; start a new wizard for a fresh session. A
 service restart does not resume an unfinished wizard; partial sessions remain
 available for explicit receiver import. The UI process can restart independently.
 
-Guided labels identify articulation, not independently measured force. The current
-model and velocity scale are not automatically retrained by the capture wizard.
+Guided labels identify articulation, not independently measured force. The shared classifier is not automatically retrained by the capture wizard.
+The receiver now computes and applies the pad response from a complete verified
+session; see [response calibration](pad-response-calibration.md).
 The collection has no amplitude threshold: every completed ADC frame is recorded.
 Later extraction uses documented onset heuristics while retaining the originals.
 

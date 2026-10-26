@@ -31,6 +31,7 @@ void TriggerEngine::configure(const std::vector<TriggerPad>& pads)
             throw std::invalid_argument(
                 "Live dual-zone sensors require distinct channels on one ADC");
         }
+        validatePadResponse(pad.response, pad.zones);
         PadState state;
         state.input = pad;
         states.push_back(state);
@@ -45,6 +46,13 @@ void TriggerEngine::reset() noexcept
         const auto input = state.input;
         state = {};
         state.input = input;
+        if (input.response.calibrated)
+        {
+            for (unsigned sensor = 0; sensor < 2; ++sensor)
+            {
+                state.sensorNoise[sensor] = input.response.sensors[sensor].noiseMean;
+            }
+        }
     }
     count = 0;
 }
@@ -89,6 +97,27 @@ void TriggerEngine::processFrame(unsigned adc, const std::array<std::uint16_t, 1
         }
         if (state.warmup < 64)
         {
+            if (pad.response.calibrated)
+            {
+                if (state.warmup == 0)
+                {
+                    for (unsigned sensor = 0; sensor < 2; ++sensor)
+                    {
+                        state.baseline[sensor] = pad.response.sensors[sensor].baseline;
+                    }
+                }
+                for (unsigned sensor = 0; sensor < (dual ? 2U : 1U); ++sensor)
+                {
+                    if (std::abs(raw[sensor] - state.baseline[sensor])
+                        < pad.response.sensors[sensor].threshold)
+                    {
+                        state.baseline[sensor] += (raw[sensor] - state.baseline[sensor])
+                                                  / static_cast<float>(state.warmup + 1);
+                    }
+                }
+                ++state.warmup;
+                continue;
+            }
             if (state.warmup == 0)
             {
                 state.baseline = raw;
@@ -104,22 +133,56 @@ void TriggerEngine::processFrame(unsigned adc, const std::array<std::uint16_t, 1
             ++state.warmup;
             continue;
         }
-        const auto peak = std::max(std::abs(raw[0] - state.baseline[0]),
-                                   dual ? std::abs(raw[1] - state.baseline[1]) : 0.0f);
-        const auto threshold = std::max(16.0f, 6.0f * state.noise + 8.0f);
+        const std::array<float, 2> amplitudes{std::abs(raw[0] - state.baseline[0]),
+                                              dual ? std::abs(raw[1] - state.baseline[1]) : 0.0f};
+        const auto peak = std::max(amplitudes[0], amplitudes[1]);
+        bool quietInput = false;
+        if (pad.response.calibrated)
+        {
+            quietInput = true;
+            for (unsigned sensor = 0; sensor < (dual ? 2U : 1U); ++sensor)
+            {
+                const auto& response = pad.response.sensors[sensor];
+                const auto threshold =
+                    response.threshold
+                    * std::max(1.0f, state.sensorNoise[sensor] / response.noiseMean);
+                quietInput = quietInput && amplitudes[sensor] < threshold;
+            }
+        }
+        else
+        {
+            quietInput = peak < std::max(16.0f, 6.0f * state.noise + 8.0f);
+        }
+        // An uncalibrated warm-up may begin in a strike/decay after a DMA gap.
+        // Before the first quiet arming only, retry the baseline bootstrap
+        // rather than retaining that strike as the baseline indefinitely.
+        if (!pad.response.calibrated && !state.initialQuietFound)
+        {
+            state.startupUnsettled = quietInput ? 0 : state.startupUnsettled + 1;
+            if (state.startupUnsettled >= 128)
+            {
+                state.warmup = 0;
+                state.startupUnsettled = 0;
+                state.quiet = 0;
+                continue;
+            }
+        }
         if (!state.pending)
         {
-            if (peak < threshold)
+            if (quietInput)
             {
                 state.noise += 0.005f * (peak - state.noise);
                 for (std::size_t channel = 0; channel < 2; ++channel)
                 {
+                    state.sensorNoise[channel] +=
+                        0.005f * (amplitudes[channel] - state.sensorNoise[channel]);
                     state.baseline[channel] += 0.01f * (raw[channel] - state.baseline[channel]);
                 }
                 state.quiet = std::min(32U, state.quiet + 1);
                 if (state.quiet >= 16 && state.cooldown == 0)
                 {
                     state.armed = true;
+                    state.initialQuietFound = true;
                 }
             }
             else
@@ -132,6 +195,7 @@ void TriggerEngine::processFrame(unsigned adc, const std::array<std::uint16_t, 1
                     state.armed = false;
                     state.filled = 0;
                     state.peak = 0;
+                    state.sensorPeaks = {};
                 }
             }
         }
@@ -144,6 +208,7 @@ void TriggerEngine::processFrame(unsigned adc, const std::array<std::uint16_t, 1
             const auto value = raw[channel] - state.onsetBaseline[channel];
             state.waveform[channel][state.filled] = value;
             state.peak = std::max(state.peak, std::abs(value));
+            state.sensorPeaks[channel] = std::max(state.sensorPeaks[channel], std::abs(value));
         }
         ++state.filled;
         if (state.filled != drumWindowFrames)
@@ -160,14 +225,22 @@ void TriggerEngine::processFrame(unsigned adc, const std::array<std::uint16_t, 1
             ++rejected;
             continue;
         }
-        // This is amplitude-based velocity, not a trained force estimator.
-        const auto velocity = static_cast<unsigned>(std::clamp(
-            std::lround(127.0 * std::sqrt(static_cast<double>(state.peak) / 2048.0)), 1L, 127L));
+        // Per-articulation response is calibrated separately from classification.
+        const auto eventPeak = pad.response.calibrated && result.classIndex < 3
+                                   ? state.sensorPeaks[result.classIndex - 1]
+                                   : state.peak;
+        const auto velocity =
+            pad.response.calibrated
+                ? calibratedVelocity(eventPeak, pad.response.articulations[result.classIndex - 1])
+                : static_cast<unsigned>(std::clamp(
+                      std::lround(127.0 * std::sqrt(static_cast<double>(state.peak) / 2048.0)),
+                      1L,
+                      127L));
         events[count++] = {index,
                            static_cast<unsigned>(result.classIndex),
                            velocity,
                            result.probabilities[result.classIndex],
-                           state.peak};
+                           eventPeak};
     }
 }
 } // namespace mimic
