@@ -1,0 +1,16 @@
+From: Open Mimic contributors
+Subject: [PATCH] cmake: honor CPU-only selection when discovering vendor SDKs
+
+--- a/litert/CMakeLists.txt
++++ b/litert/CMakeLists.txt
+@@ -277,7 +277,9 @@
+ add_subdirectory(core)
+ add_subdirectory(runtime)
+ add_subdirectory(compiler)
+-add_subdirectory(vendors)
++if(LITERT_ENABLE_NPU)
++  add_subdirectory(vendors)
++endif()
+ add_subdirectory(tools)
+ add_subdirectory(experimental/custom_ops/gated_delta_net)
+ 

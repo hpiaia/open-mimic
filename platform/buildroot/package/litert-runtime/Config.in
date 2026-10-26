@@ -1,0 +1,7 @@
+config BR2_PACKAGE_LITERT_RUNTIME
+	bool "LiteRT CPU runtime"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on !BR2_STATIC_LIBS
+	help
+	  Google LiteRT CompiledModel C API, CPU backend for ARMv7/musl.

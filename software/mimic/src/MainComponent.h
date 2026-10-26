@@ -3,7 +3,9 @@
 
 #include "AudioDebugPanel.h"
 #include "AuxInputPanel.h"
+#include "MidiPanel.h"
 #include "NetworkMonitor.h"
+#include "PadCalibrationPanel.h"
 #include "SystemMonitor.h"
 #include "WheelInput.h"
 
@@ -54,6 +56,8 @@ private:
     SystemMonitor system;
     AudioDebugPanel audioDebug;
     AuxInputPanel auxInput;
+    MidiPanel midiPanel;
+    PadCalibrationPanel padCalibration;
     WheelInput wheel;
     juce::Slider headphoneVolume;
     juce::Label headphoneLevel;
@@ -69,9 +73,11 @@ private:
     juce::Label message;
     juce::Label touchStatus;
     juce::TextButton calibrate{"Calibrate pads"};
-    juce::TextButton triggers{"Trigger monitor"};
+    juce::TextButton triggers{"ADC monitor"};
+    juce::TextButton padMidi{"Pad MIDI map"};
     juce::TextButton audio{"Audio test"};
     juce::TextButton aux{"Aux input"};
+    juce::TextButton midi{"MIDI"};
     juce::Rectangle<int> networkBounds;
     juce::Point<int> lastTouch;
     int taps = 0;

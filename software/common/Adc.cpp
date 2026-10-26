@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "Adc.h"
 
+#include "AdcFrame.h"
+
 #include <cerrno>
+#include <cstring>
 #include <stdexcept>
 #include <system_error>
 #ifdef __linux__
@@ -89,18 +92,85 @@ Adc::~Adc()
 #endif
 }
 
+AdcFrameBatch Adc::readCompletedFrames()
+{
+    if (layout_.dmaBytes != 4096 || layout_.portionBytes != 32)
+    {
+        throw std::runtime_error("Completed-frame reader requires a 4096-byte ADC ring");
+    }
+    const auto* words = static_cast<volatile const std::uint32_t*>(mapping_);
+    const auto* cursor = words + 1024;
+    const auto before = *cursor;
+    const auto validCursor = [](std::uint32_t value)
+    { return value > 0 && value <= 4096 && value % 32 == 0; };
+    AdcFrameBatch result;
+    if (!validCursor(before))
+    {
+        frameCursor_ = 0;
+        result.valid = false;
+        return result;
+    }
+    if (frameCursor_ == 0)
+    {
+        frameCursor_ = before;
+        return result;
+    }
+    const auto produced = (before + 4096 - frameCursor_) % 4096;
+    auto offset = frameCursor_ % 4096;
+    result.count = produced / 32;
+    for (std::size_t frame = 0; frame < result.count; ++frame)
+    {
+        for (std::size_t word = 0; word < 8; ++word)
+        {
+            const auto value = words[offset / 4 + word];
+            std::memcpy(result.frames[frame].data() + word * 2, &value, sizeof(value));
+        }
+        std::array<std::uint16_t, 16> channels{};
+        if (!decodeAdcFrame(result.frames[frame], channels))
+        {
+            result.count = 0;
+            result.valid = false;
+            frameCursor_ = 0;
+            return result;
+        }
+        result.frames[frame] = channels;
+        offset = (offset + 32) % 4096;
+    }
+    const auto after = *cursor;
+    if (!validCursor(after) || produced + (after + 4096 - before) % 4096 >= 4096)
+    {
+        result.count = 0;
+        result.valid = false;
+        frameCursor_ = 0;
+    }
+    else
+    {
+        frameCursor_ = before;
+    }
+    // Caller must reject scheduling/copy gaps >= one ring's observed duration.
+    // Modulo producer cursors alone cannot identify an unobserved full wrap.
+    return result;
+}
+
 std::pair<std::uint32_t, std::uint32_t> Adc::snapshot(std::vector<std::uint8_t>& destination) const
 {
     if (destination.size() != layout_.dmaBytes)
     {
         throw std::invalid_argument("Wrong ADC snapshot size");
     }
-    const auto* bytes = static_cast<volatile const std::uint8_t*>(mapping_);
-    const auto* cursor = reinterpret_cast<volatile const std::uint32_t*>(bytes + layout_.dmaBytes);
+    // mmap is page aligned and validated DMA lengths are multiples of 32 bytes.
+    // Read the shared DMA mapping with aligned bus words: byte-wide volatile
+    // accesses are particularly expensive on the original uncached ARM mapping.
+    const auto* words = static_cast<volatile const std::uint32_t*>(mapping_);
+    const auto wordCount = destination.size() / sizeof(std::uint32_t);
+    const auto* cursor = words + wordCount;
     const auto before = *cursor;
-    for (std::size_t i = 0; i < destination.size(); ++i)
+    for (std::size_t i = 0; i < wordCount; ++i)
     {
-        destination[i] = bytes[i];
+        const std::uint32_t word = words[i];
+        // Preserve the mapping's native byte order without imposing alignment
+        // or uint32_t aliasing requirements on the byte-vector destination.
+        std::memcpy(destination.data() + i * sizeof(word), &word, sizeof(word));
     }
     return {before, *cursor}; // Diagnostic snapshot; not atomic or guaranteed lossless.
 }

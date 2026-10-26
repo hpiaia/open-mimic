@@ -131,7 +131,7 @@ private:
             if (index < owner.owner.items.size())
             {
                 owner.owner.setSelectedId(owner.owner.items[index].identifier,
-                                          juce::dontSendNotification);
+                                          juce::sendNotificationAsync);
                 // Dismiss immediately in this window, without a native popup event loop.
                 owner.setVisible(false);
             }
@@ -164,7 +164,19 @@ void TouchChoice::addItem(const juce::String& text, int identifier)
     items.push_back({text, identifier});
 }
 
-void TouchChoice::setSelectedId(int identifier, juce::NotificationType)
+void TouchChoice::clear()
+{
+    cancelPendingUpdate();
+    if (popup != nullptr)
+    {
+        popup->setVisible(false);
+    }
+    items.clear();
+    selectedId = 0;
+    button.setButtonText("Select  v");
+}
+
+void TouchChoice::setSelectedId(int identifier, juce::NotificationType notification)
 {
     const auto item = std::find_if(items.begin(),
                                    items.end(),
@@ -172,8 +184,25 @@ void TouchChoice::setSelectedId(int identifier, juce::NotificationType)
                                    { return candidate.identifier == identifier; });
     if (item != items.end())
     {
+        const bool changed = selectedId != identifier;
         selectedId = identifier;
         button.setButtonText(item->text + "  v");
+        if (changed && notification == juce::sendNotificationSync)
+        {
+            handleAsyncUpdate();
+        }
+        else if (changed && notification != juce::dontSendNotification)
+        {
+            triggerAsyncUpdate();
+        }
+    }
+}
+
+void TouchChoice::handleAsyncUpdate()
+{
+    if (onChange)
+    {
+        onChange();
     }
 }
 

@@ -3,20 +3,24 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
 // A full-window choice list with finger-sized rows and drag scrolling.
-class TouchChoice final : public juce::Component
+class TouchChoice final : public juce::Component, private juce::AsyncUpdater
 {
 public:
     TouchChoice();
     ~TouchChoice() override;
 
     void addItem(const juce::String& text, int identifier);
+    void clear();
     void setSelectedId(int identifier, juce::NotificationType notification);
     [[nodiscard]] int getSelectedId() const noexcept;
     void resized() override;
+
+    std::function<void()> onChange;
 
 private:
     struct Item
@@ -26,6 +30,7 @@ private:
     };
     class Popup;
     void showChoices();
+    void handleAsyncUpdate() override;
 
     std::vector<Item> items;
     int selectedId = 0;

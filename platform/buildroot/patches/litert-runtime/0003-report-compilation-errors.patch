@@ -1,0 +1,23 @@
+From: Open Mimic contributors
+Subject: [PATCH] c: log CompiledModel creation errors before returning status
+
+--- a/litert/c/litert_compiled_model.cc
++++ b/litert/c/litert_compiled_model.cc
+@@ -56,10 +56,13 @@
+   // multi-threading.
+   absl::MutexLock lock(compiled_model_create_mutex);
+ 
+-  LITERT_ASSIGN_OR_RETURN(auto created_compiled_model,
+-                          LiteRtCompiledModelT::Create(
+-                              environment, model, jit_compilation_options));
+-  *compiled_model = created_compiled_model.release();
++  auto created_compiled_model = LiteRtCompiledModelT::Create(
++      environment, model, jit_compilation_options);
++  if (!created_compiled_model) {
++    LITERT_LOG(LITERT_ERROR, "%s", created_compiled_model.Error().Message().c_str());
++    return litert::ToLiteRtStatus(created_compiled_model.Error().StatusCC());
++  }
++  *compiled_model = created_compiled_model->release();
+   return kLiteRtStatusOk;
+ }
+ 

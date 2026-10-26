@@ -1,0 +1,16 @@
+From: Open Mimic contributors
+Subject: [PATCH] cmake: omit OpenCL-only sources in CPU builds
+
+--- a/litert/runtime/CMakeLists.txt
++++ b/litert/runtime/CMakeLists.txt
+@@ -75,7 +75,9 @@
+ if(APPLE)
+   target_sources(litert_runtime PRIVATE metal_info.cc)
+ endif()
+-target_sources(litert_runtime PRIVATE open_cl_memory.cc open_cl_sync.cc)
++if(LITERT_ENABLE_GPU)
++  target_sources(litert_runtime PRIVATE open_cl_memory.cc open_cl_sync.cc)
++endif()
+ 
+ # Link Apple frameworks for Metal and OpenGL interop
+ if(APPLE)

@@ -87,6 +87,11 @@ Read helpers:
 sample = buf[offset] | ((buf[offset + 1] & 0x0f) << 8);
 ```
 
+The upper nibble must also be retained for channel identification. Live device
+and archived captures prove that DMA slot order rotates across boots. Open Mimic
+now decodes physical channel IDs from bits 15:12; see
+[stable ADC channel identification](adc-channel-identification.md).
+
 Open Mimic implication: a compatibility driver or shim probably needs to preserve these ioctl numbers and the mmap layout before the original `mimic_pro` binary can be rehosted against a replacement kernel.
 
 ## Aux ADC: `CAuxAdc`

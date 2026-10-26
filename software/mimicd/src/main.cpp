@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "Adc.h"
 #include "Capture.h"
+#include "MidiService.h"
+#include "PadService.h"
 
 #ifdef MIMIC_USE_JUCE
 #include "AudioEngine.h"
@@ -18,6 +20,38 @@ int main(int argc, char** argv)
     try
     {
         const std::string command = argc > 1 ? argv[1] : "";
+        if (command == "pad-service")
+        {
+            if (argc == 2)
+            {
+                return mimic::runPadService();
+            }
+            if (argc == 4 && std::string(argv[2]) == "--data-directory")
+            {
+                return mimic::runPadService(argv[3]);
+            }
+            throw std::invalid_argument("Usage: pad-service [--data-directory PATH]");
+        }
+        if (command == "pad-command")
+        {
+            return mimic::runPadCommand(argc, argv);
+        }
+        if (command == "midi-service")
+        {
+            if (argc == 2)
+            {
+                return mimic::runMidiService();
+            }
+            if (argc == 4 && std::string(argv[2]) == "--din-device")
+            {
+                return mimic::runMidiService(argv[3]);
+            }
+            throw std::invalid_argument("Usage: midi-service [--din-device /dev/ttyS9]");
+        }
+        if (command == "midi-config" || command == "midi-test" || command == "midi-panic")
+        {
+            return mimic::runMidiCommand(argc, argv);
+        }
         if (command == "probe" && argc == 2)
         {
             for (int index = 0; index < 2; ++index)
@@ -114,10 +148,14 @@ int main(int argc, char** argv)
             return mimic::audioToneSelfTest();
         }
 #endif
-        std::cerr << "Usage: mimicd probe | mimicd capture OUTPUT.omadc SECONDS | mimicd "
-                     "aux-control | audio-self-test | audio-probe | audio-test [--channels 1,3] "
-                     "[--frequency 440] "
-                     "[--seconds 3] [--amplitude 1.0] | audio-stop\n";
+        std::cerr
+            << "Usage: mimicd probe | mimicd capture OUTPUT.omadc SECONDS | mimicd "
+               "pad-service [--data-directory PATH] | pad-command ACTION [ARGS] | "
+               "aux-control | audio-self-test | audio-probe | audio-test [--channels 1,3] "
+               "[--frequency 440] "
+               "[--seconds 3] [--amplitude 1.0] | audio-stop | midi-service [--din-device PATH] | "
+               "midi-config [--input din|none|usb-CxDy] [--output ID] [--channel 0..16] | "
+               "midi-test [--note 36] [--velocity 96] [--channel 10] [--ms 250] | midi-panic\n";
         return 2;
     }
     catch (const std::exception& e)

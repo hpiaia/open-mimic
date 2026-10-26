@@ -54,13 +54,31 @@ MainComponent::MainComponent()
     message.setText("Select a function", juce::dontSendNotification);
     message.setColour(juce::Label::textColourId, accent);
     touchStatus.setText("Touch ready", juce::dontSendNotification);
-    for (auto* button : {&calibrate, &triggers, &audio, &aux})
+    for (auto* button : {&calibrate, &triggers, &audio, &aux, &midi, &padMidi})
     {
         addAndMakeVisible(*button);
         button->setMouseCursor(juce::MouseCursor::PointingHandCursor);
     }
-    calibrate.onClick = [this] { show("Pad calibration is not implemented yet."); };
-    triggers.onClick = [this] { show("Trigger monitor is not implemented yet."); };
+    addChildComponent(padCalibration);
+    padCalibration.onClose = [this] { padCalibration.setVisible(false); };
+    calibrate.onClick = [this]
+    {
+        padCalibration.showCalibration();
+        padCalibration.setVisible(true);
+        padCalibration.toFront(true);
+    };
+    triggers.onClick = [this]
+    {
+        padCalibration.showMonitor();
+        padCalibration.setVisible(true);
+        padCalibration.toFront(true);
+    };
+    padMidi.onClick = [this]
+    {
+        padCalibration.showMapping();
+        padCalibration.setVisible(true);
+        padCalibration.toFront(true);
+    };
     addChildComponent(audioDebug);
     audioDebug.onClose = [this] { audioDebug.setVisible(false); };
     audio.onClick = [this]
@@ -74,6 +92,13 @@ MainComponent::MainComponent()
     {
         auxInput.setVisible(true);
         auxInput.toFront(true);
+    };
+    addChildComponent(midiPanel);
+    midiPanel.onClose = [this] { midiPanel.setVisible(false); };
+    midi.onClick = [this]
+    {
+        midiPanel.setVisible(true);
+        midiPanel.toFront(true);
     };
     addMouseListener(&touchListener, true);
     setSize(1024, 600);
@@ -113,6 +138,8 @@ void MainComponent::resized()
 {
     audioDebug.setBounds(getLocalBounds().withTrimmedTop(104).reduced(36, 0));
     auxInput.setBounds(audioDebug.getBounds());
+    midiPanel.setBounds(audioDebug.getBounds());
+    padCalibration.setBounds(audioDebug.getBounds());
     auto area = getLocalBounds().reduced(36, 20);
     auto header = area.removeFromTop(43);
     systemStatus.setBounds(header.removeFromRight(288));
@@ -136,13 +163,15 @@ void MainComponent::resized()
     juce::Grid grid;
     using Track = juce::Grid::TrackInfo;
     using Fr = juce::Grid::Fr;
-    grid.templateColumns = {Track(Fr(1)), Track(Fr(1))};
+    grid.templateColumns = {Track(Fr(1)), Track(Fr(1)), Track(Fr(1))};
     grid.templateRows = {Track(Fr(1)), Track(Fr(1))};
     grid.setGap(juce::Grid::Px(16));
     grid.items = {juce::GridItem(calibrate),
                   juce::GridItem(triggers),
                   juce::GridItem(audio),
-                  juce::GridItem(aux)};
+                  juce::GridItem(aux),
+                  juce::GridItem(midi),
+                  juce::GridItem(padMidi)};
     grid.performLayout(buttons);
     area.removeFromTop(12);
     message.setBounds(area.removeFromTop(30));
