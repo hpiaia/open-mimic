@@ -29,6 +29,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <locale>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -166,6 +167,105 @@ std::string newIdentifier()
     return result.str();
 }
 
+// A pad-specific classifier produced from the pad's own calibration recordings.
+// The sidecar text file is the contract; the shared factory model remains the
+// fallback whenever no valid pad model is present.
+struct PadModel
+{
+    std::string pad;
+    std::string base;
+    std::string source;
+    std::string sha256;
+    ClassGate gate = defaultClassGate;
+#ifdef MIMIC_USE_LITERT
+    std::shared_ptr<LiteRtModel> runtime;
+#endif
+
+    [[nodiscard]] bool active() const noexcept
+    {
+#ifdef MIMIC_USE_LITERT
+        return runtime != nullptr;
+#else
+        return false;
+#endif
+    }
+};
+
+bool hexIdentity(const std::string& value, std::size_t size)
+{
+    return value.size() == size && value.find_first_not_of("0123456789abcdef") == std::string::npos;
+}
+
+PadModel readPadModel(std::istream& input)
+{
+    input.imbue(std::locale::classic());
+    std::string magic;
+    int version = 0;
+    if (!(input >> magic >> version) || magic != "OPEN_MIMIC_PAD_MODEL" || version != 1)
+    {
+        throw std::runtime_error("Unsupported pad model description");
+    }
+    PadModel result;
+    std::string key;
+    bool haveGate = false;
+    while (input >> key)
+    {
+        if (key == "pad")
+        {
+            input >> result.pad;
+        }
+        else if (key == "base")
+        {
+            input >> result.base;
+        }
+        else if (key == "source")
+        {
+            input >> result.source;
+        }
+        else if (key == "sha256")
+        {
+            input >> result.sha256;
+        }
+        else if (key == "gate")
+        {
+            input >> result.gate[1] >> result.gate[2] >> result.gate[3];
+            haveGate = true;
+        }
+        else
+        {
+            throw std::runtime_error("Unknown pad model field: " + key);
+        }
+        if (!input)
+        {
+            throw std::runtime_error("Malformed pad model field: " + key);
+        }
+    }
+    if (result.pad.empty() || !hexIdentity(result.base, 64) || !hexIdentity(result.source, 64)
+        || !hexIdentity(result.sha256, 64) || !haveGate)
+    {
+        throw std::runtime_error("Incomplete pad model description");
+    }
+    for (std::size_t index = 1; index < result.gate.size(); ++index)
+    {
+        if (!std::isfinite(result.gate[index]) || result.gate[index] < 0.0f
+            || result.gate[index] > 1.0f)
+        {
+            throw std::runtime_error("Pad model gate thresholds must be within 0..1");
+        }
+    }
+    return result;
+}
+
+std::string writePadModel(const PadModel& value)
+{
+    std::ostringstream output;
+    output.imbue(std::locale::classic());
+    output << std::setprecision(9) << "OPEN_MIMIC_PAD_MODEL 1\npad " << value.pad << "\nbase "
+           << value.base << "\nsource " << value.source << "\nsha256 " << value.sha256 << "\ngate "
+           << value.gate[1] << ' ' << value.gate[2] << ' ' << value.gate[3] << '\n';
+    return output.str();
+}
+
 struct PadDefinition
 {
     std::string id;
@@ -181,6 +281,9 @@ struct PadDefinition
     PadCalibration calibration;
     std::string calibrationError;
     std::string calibrationAttempt;
+    PadModel model;
+    std::string modelError;
+    std::string modelAttempt;
 };
 
 bool validPad(const PadDefinition& pad)
@@ -577,6 +680,25 @@ public:
                 pad.calibrationError = exception.what();
             }
         }
+        std::filesystem::create_directories(dataDirectory / "models" / "staging");
+        for (auto& pad : pads)
+        {
+            try
+            {
+                const auto description = dataDirectory / "models" / (pad.id + ".model");
+                if (std::filesystem::exists(description))
+                {
+                    pad.model = loadPadModel(
+                        description, dataDirectory / "models" / (pad.id + ".tflite"), pad);
+                }
+                pad.modelError = readSmallText(dataDirectory / "models" / (pad.id + ".error"));
+            }
+            catch (const std::exception& exception)
+            {
+                pad.model = {};
+                pad.modelError = exception.what();
+            }
+        }
 #ifdef MIMIC_USE_LITERT
         engineRequested = true;
         std::ifstream engineSettings(dataDirectory / "engine-enabled");
@@ -827,6 +949,45 @@ public:
                     throw std::runtime_error("Unknown calibration pad");
                 }
                 receiveProfile(*found, token, verb == "profile-failed");
+            }
+            else if (verb == "model-reset")
+            {
+                std::string id;
+                input >> id;
+                requireEnd(input);
+                auto found = std::find_if(pads.begin(),
+                                          pads.end(),
+                                          [&](const PadDefinition& pad) { return pad.id == id; });
+                if (found == pads.end())
+                {
+                    throw std::runtime_error("Unknown calibration pad");
+                }
+                for (const char* suffix : {".model", ".tflite", ".error"})
+                {
+                    std::filesystem::remove(dataDirectory / "models" / (id + suffix));
+                }
+                found->model = {};
+                found->modelError.clear();
+                found->modelAttempt.clear();
+                configureLive();
+            }
+            else if (verb == "model-load" || verb == "model-failed")
+            {
+                std::string id, token;
+                input >> id >> token;
+                requireEnd(input);
+                if (!hexIdentity(token, 32))
+                {
+                    throw std::runtime_error("Invalid model transfer identity");
+                }
+                auto found = std::find_if(pads.begin(),
+                                          pads.end(),
+                                          [&](const PadDefinition& pad) { return pad.id == id; });
+                if (found == pads.end())
+                {
+                    throw std::runtime_error("Unknown calibration pad");
+                }
+                receiveModel(*found, token, verb == "model-failed");
             }
             else if (verb == "archive-seal" || verb == "archive-ack")
             {
@@ -1139,7 +1300,8 @@ public:
                    << ",\"headNote\":" << pad.headNote << ",\"rimNote\":" << pad.rimNote
                    << ",\"rimshotNote\":" << pad.rimshotNote
                    << ",\"sd3Instrument\":" << quoted(pad.sd3Instrument)
-                   << ",\"calibration\":" << calibrationJson(pad) << '}';
+                   << ",\"calibration\":" << calibrationJson(pad) << ",\"model\":" << modelJson(pad)
+                   << '}';
         }
         output << "],\"meters\":[";
         for (std::size_t index = 0; index < displayPeaks.size(); ++index)
@@ -1489,6 +1651,88 @@ private:
         std::filesystem::remove(staged, ignored);
     }
 
+    static PadModel loadPadModel(const std::filesystem::path& description,
+                                 const std::filesystem::path& weights,
+                                 const PadDefinition& pad)
+    {
+        std::istringstream input(readSmallText(description));
+        auto model = readPadModel(input);
+        if (model.pad != pad.id)
+        {
+            throw std::runtime_error("Pad model belongs to another pad");
+        }
+        if (std::filesystem::is_symlink(weights) || !std::filesystem::is_regular_file(weights)
+            || std::filesystem::file_size(weights) > 1024 * 1024)
+        {
+            throw std::runtime_error("Pad model weights are missing or exceed size bounds");
+        }
+#ifdef MIMIC_USE_LITERT
+        model.runtime = std::make_shared<LiteRtModel>(weights.string());
+        if (model.runtime->classCount() != 4)
+        {
+            throw std::runtime_error("Pad model must output four classes");
+        }
+#else
+        throw std::runtime_error("LiteRT support is not built");
+#endif
+        return model;
+    }
+
+    void receiveModel(PadDefinition& pad, const std::string& token, bool failed)
+    {
+        const auto staging = dataDirectory / "models" / "staging";
+        const auto stagedDescription = staging / (token + (failed ? ".error" : ".model"));
+        const auto stagedWeights = staging / (token + ".tflite");
+        try
+        {
+            if (failed)
+            {
+                const auto message = readSmallText(stagedDescription);
+                if (message.empty())
+                {
+                    throw std::runtime_error("Empty model failure report");
+                }
+                pad.modelError = message.substr(0, 500);
+                atomicText(dataDirectory / "models" / (pad.id + ".error"), pad.modelError);
+            }
+            else
+            {
+                // Load from the staged copy first: a model that cannot run never
+                // replaces an active one. The rename keeps the loaded file's inode.
+                auto model = loadPadModel(stagedDescription, stagedWeights, pad);
+                std::filesystem::rename(stagedWeights,
+                                        dataDirectory / "models" / (pad.id + ".tflite"));
+                atomicText(dataDirectory / "models" / (pad.id + ".model"), writePadModel(model));
+                pad.model = std::move(model);
+                pad.modelError.clear();
+                std::filesystem::remove(dataDirectory / "models" / (pad.id + ".error"));
+                configureLive();
+            }
+        }
+        catch (const std::exception& exception)
+        {
+            pad.modelError = exception.what();
+            atomicText(dataDirectory / "models" / (pad.id + ".error"), pad.modelError);
+        }
+        pad.modelAttempt = token;
+        std::error_code ignored;
+        std::filesystem::remove(stagedDescription, ignored);
+        std::filesystem::remove(stagedWeights, ignored);
+    }
+
+    static std::string modelJson(const PadDefinition& pad)
+    {
+        const auto& model = pad.model;
+        std::ostringstream output;
+        output << "{\"state\":" << quoted(model.active() ? "active" : "none")
+               << ",\"source\":" << quoted(model.source) << ",\"base\":" << quoted(model.base)
+               << ",\"sha256\":" << quoted(model.sha256)
+               << ",\"attempt\":" << quoted(pad.modelAttempt)
+               << ",\"error\":" << quoted(pad.modelError) << ",\"gate\":[" << model.gate[1] << ','
+               << model.gate[2] << ',' << model.gate[3] << "]}";
+        return output.str();
+    }
+
     static std::string calibrationJson(const PadDefinition& pad)
     {
         const auto& profile = pad.calibration;
@@ -1530,7 +1774,16 @@ private:
             {
                 response.calibrated = false;
             }
-            inputs.push_back({pad.head, pad.rim, pad.zoneCount, response});
+            TriggerPad input{pad.head, pad.rim, pad.zoneCount, response};
+#ifdef MIMIC_USE_LITERT
+            if (pad.model.runtime)
+            {
+                input.predictor = [runtime = pad.model.runtime](const DrumFeatures& features)
+                { return runtime->predict(features); };
+                input.gate = pad.model.gate;
+            }
+#endif
+            inputs.push_back(std::move(input));
         }
         try
         {
@@ -2090,7 +2343,8 @@ int runPadCommand(int argc, char** argv)
     if (argc < 3)
     {
         throw std::invalid_argument(
-            "Usage: mimicd pad-command select|config|start|stop|discard|new-session ...");
+            "Usage: mimicd pad-command "
+            "select|config|start|stop|discard|new-session|model-load|model-reset ...");
     }
     std::ostringstream command;
     for (int index = 2; index < argc; ++index)

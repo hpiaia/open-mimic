@@ -298,3 +298,56 @@ The model card documents poor Tom 1 held-out crosstalk rejection. The live
 engine is enabled for owner testing and refinement, not a claim of universal
 pad accuracy. Real strike force, commercial pad identity, quick calibration,
 continuous false-trigger rate and complete physical latency remain unmeasured.
+
+## Per-pad classifier adaptation (installed 2026-10-26)
+
+The module now runs a pad-specific classifier when one exists and falls back
+to the shared model otherwise. The data path is the existing calibration flow:
+
+1. The wizard records a pad and the Mac receiver archives the session.
+2. After the archive is acknowledged, the receiver builds a manifest of every
+   archived session, trains the kit's shared base CNN once
+   (`measurements/.models/base/`), then refits only the last two layers of
+   that base on all archived sessions of the calibrated pad
+   (`scripts/pad_model_adaptation.py adapt`). Export is verified against Keras
+   on the host; the installed Tom 4 model also matched the module's own LiteRT
+   on all 1,791 host cases with zero class disagreements.
+3. The receiver stages `<token>.tflite` and `<token>.model` under
+   `/var/lib/mimic/pads/models/staging/` and sends
+   `mimicd pad-command model-load PAD TOKEN`. The daemon loads the staged
+   weights first; only a model that runs and outputs four classes replaces the
+   previous one. Status reports `pads[].model` with `state`, `sha256`, `base`,
+   `source`, `attempt`, `error` and `gate`. `model-reset PAD` removes it.
+
+The sidecar `<pad>.model` is the contract:
+
+```text
+OPEN_MIMIC_PAD_MODEL 1
+pad tom4
+base <sha256 of the base .tflite>
+source <sha256 over base + the pad's capture hashes>
+sha256 <sha256 of this .tflite>
+gate 0.65 0.65 0.65
+```
+
+`gate` holds per-class minimum probabilities (head, rim, rimshot). The engine
+applies them per pad; the former fixed 0.65 remains the default for pads
+without a model. `TriggerPad` gained an optional `predictor` and a `gate`.
+
+Receiver flags: `--no-model-adaptation` archives and fits responses only;
+`--ml-python` points at the TensorFlow interpreter (default `build/ml-venv`).
+Adaptation runs after the SD copy is released, so a failed fine-tune never
+delays or blocks archiving; failures are recorded in `download.json` under
+`model_adaptation` and the module keeps its previous model.
+
+Label review: `scripts/review_rimshots.py measurements/PAD/SESSION` lists the
+session's evidenced rimshot candidates with rim/head ratio and the installed
+pad model's opinion, flags look-alikes of pure head or rim hits, and with
+`--interactive` or `--exclude-flagged` records exclusions in
+`measurements/.reviews/PAD/SESSION.json`. Training honours those exclusions;
+recordings are never modified or relabeled.
+
+Deployed state: daemon `328c77d5…` (backup `/usr/bin/mimicd.before-pad-models`,
+`8c22eb0e…`), seven active pad models from base `8f080af3…`, shared factory
+model unchanged. Expected behaviour on this kit is the within-kit study's
+per-pad fine-tune column, not an independent test of these exact weights.

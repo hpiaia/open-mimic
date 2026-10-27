@@ -32,6 +32,13 @@ void TriggerEngine::configure(const std::vector<TriggerPad>& pads)
                 "Live dual-zone sensors require distinct channels on one ADC");
         }
         validatePadResponse(pad.response, pad.zones);
+        for (std::size_t index = 1; index < pad.gate.size(); ++index)
+        {
+            if (!std::isfinite(pad.gate[index]) || pad.gate[index] < 0.0f || pad.gate[index] > 1.0f)
+            {
+                throw std::invalid_argument("Class gate thresholds must be within 0..1");
+            }
+        }
         PadState state;
         state.input = pad;
         states.push_back(state);
@@ -218,9 +225,11 @@ void TriggerEngine::processFrame(unsigned adc, const std::array<std::uint16_t, 1
         state.pending = false;
         state.cooldown = 128;
         state.quiet = 0;
-        const auto result = predictor(drumFeatures(state.waveform, dual));
+        const auto result = pad.predictor ? pad.predictor(drumFeatures(state.waveform, dual))
+                                          : predictor(drumFeatures(state.waveform, dual));
         if (!result.valid || result.classIndex == 0 || result.classIndex > (dual ? 3U : 1U)
-            || result.probabilities[result.classIndex] < 0.65f || count == events.size())
+            || result.probabilities[result.classIndex] < pad.gate[result.classIndex]
+            || count == events.size())
         {
             ++rejected;
             continue;

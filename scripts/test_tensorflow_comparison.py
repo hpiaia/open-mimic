@@ -40,6 +40,19 @@ class TensorFlowComparisonTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'leaked'):
             check_split(examples, examples[:1])
 
+    def test_few_shot_support_trains_in_every_fold_and_is_never_evaluated(self):
+        examples = rows()
+        for row in examples:
+            row['training_only_support'] = row['session'] == '1'
+        splits = list(validation_splits(examples, 2))
+        self.assertEqual(len(splits), 5)
+        for kind, name, training, held in splits:
+            check_split(training, held)
+            self.assertFalse(any(row['training_only_support'] for row in held))
+            self.assertEqual(sum(row['training_only_support'] for row in training), 12)
+            if kind == 'pad':
+                self.assertIn(name, {row['group'] for row in training if row['training_only_support']})
+
     def test_training_evidence_checks_the_articulation_sensor(self):
         row = rows()[2]
         row['waveform'] = [[100.] * 32, [1.] * 32]

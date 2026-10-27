@@ -47,6 +47,29 @@ class SensorAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'eight'):
             support_normalize(rows, {r['example_id']: False for r in rows})
 
+    def test_gain_mode_equalizes_articulation_peaks_from_support_only(self):
+        rows = fixture()
+        query, adapters = support_normalize(rows, {r['example_id']: True for r in rows}, mode='gain')
+        self.assertEqual(adapters['tom']['mode'], 'gain')
+        matrix = np.asarray(adapters['tom']['matrix'])
+        self.assertEqual(matrix[0, 1], 0)
+        self.assertEqual(matrix[1, 0], 0)
+        references = adapters['tom']['support_articulation_peak_references']
+        # Head support peaks are 300..307 and rim support peaks .35 * (300..307).
+        self.assertAlmostEqual(references[0], np.quantile(range(300, 308), .95))
+        self.assertAlmostEqual(references[1], .35 * np.quantile(range(300, 308), .95))
+        for row in query:
+            peak = max(abs(v) for v in row['waveform'][row['label'] - 1])
+            self.assertLess(abs(peak - 512) / 512, .03)
+        changed = copy.deepcopy(rows)
+        for row in changed:
+            if row['session'] != '1':
+                row['waveform'] = np.full((2, 32), 4000).tolist()
+        _, other = support_normalize(changed, {r['example_id']: True for r in rows}, mode='gain')
+        self.assertEqual(adapters, other)
+        with self.assertRaisesRegex(ValueError, 'mode'):
+            support_normalize(rows, {r['example_id']: True for r in rows}, mode='other')
+
 
 if __name__ == '__main__':
     unittest.main()

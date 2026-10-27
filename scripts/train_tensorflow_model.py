@@ -56,8 +56,8 @@ def make_model(x: np.ndarray, classes: int = 3, architecture: str = 'linear') ->
 
 
 def fit_model(rows: list[dict], epochs: int, classes: int | None = None,
-              architecture: str = 'linear', balance_sessions: bool = False) -> tf.keras.Model:
-    tf.keras.utils.set_random_seed(1729)
+              architecture: str = 'linear', balance_sessions: bool = False, seed: int = 1729) -> tf.keras.Model:
+    tf.keras.utils.set_random_seed(seed)
     data = examples(rows, augment=True)
     x = np.asarray([values for values, _ in data], dtype=np.float32)
     y = np.asarray([label for _, label in data], dtype=np.int32)
@@ -87,7 +87,7 @@ def fit_model(rows: list[dict], epochs: int, classes: int | None = None,
     options.experimental_deterministic = True
     dataset = tf.data.Dataset.from_tensor_slices((x, y, weights))
     if architecture == 'cnn':
-        dataset = dataset.shuffle(len(data), seed=1729, reshuffle_each_iteration=True)
+        dataset = dataset.shuffle(len(data), seed=seed, reshuffle_each_iteration=True)
     dataset = dataset.batch(256 if architecture == 'cnn' else len(data)).with_options(options)
     history = model.fit(dataset, epochs=epochs, verbose=0, shuffle=False)
     if not np.all(np.isfinite(history.history['loss'])):

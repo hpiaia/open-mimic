@@ -43,8 +43,12 @@ def check_split(training, held):
 
 
 def validation_splits(rows, session_folds=3):
+    # Calibration-support windows (few-shot protocol) train in every fold and are never held out.
+    support = [r for r in rows if r.get('training_only_support')]
+    rows = [r for r in rows if not r.get('training_only_support')]
     for group in sorted({r['group'] for r in rows}):
         training, held = partition(rows, group)
+        training += support
         check_split(training, held)
         yield 'pad', group, training, held
     sessions = {group: sorted({r['session'] for r in rows if r['group'] == group})
@@ -54,7 +58,7 @@ def validation_splits(rows, session_folds=3):
     # Lexical IDs define a deterministic fold; no window-level random split.
     for index in range(session_folds):
         selected = {(group, values[index]) for group, values in sessions.items()}
-        training = [r for r in rows if (r['group'], r['session']) not in selected]
+        training = [r for r in rows if (r['group'], r['session']) not in selected] + support
         held = [r for r in rows if (r['group'], r['session']) in selected]
         check_split(training, held)
         yield 'session', str(index + 1), training, held
@@ -78,16 +82,24 @@ def classification_metrics(model, rows):
     return result
 
 
-def run(manifest, output, minimum_ratio=3., cnn_epochs=80, linear_epochs=400, calibration_adapter='none'):
+def augmented(training, augmentation):
+    if augmentation == 'none':
+        return training
+    from waveform_augmentation import gain_augmented_rows
+    return training + gain_augmented_rows(training)
+
+
+def run(manifest, output, minimum_ratio=3., cnn_epochs=80, linear_epochs=400, calibration_adapter='none', augmentation='none', few_shot=False, seed=1729):
     if output.exists():
         raise ValueError('Choose a new output directory')
     output.mkdir(parents=True)
     config = {'format': 'open-mimic-model-comparison-v1', 'minimum_positive_training_threshold_ratio': minimum_ratio,
-              'epochs': {'linear': linear_epochs, 'cnn': cnn_epochs}, 'seed': 1729,
+              'epochs': {'linear': linear_epochs, 'cnn': cnn_epochs}, 'seed': seed,
+              'few_shot_support_in_training': few_shot,
               'balance': 'equal class mass, then equal mass per pad/session/class cell',
               'window_frames': 32, 'manifest_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest(),
-              'calibration_adapter': calibration_adapter,
-              'runtime_input_compatible': calibration_adapter != 'sensor-demix',
+              'calibration_adapter': calibration_adapter, 'training_augmentation': augmentation,
+              'runtime_input_compatible': calibration_adapter not in ('sensor-demix', 'sensor-gain'),
               'promotion_gate': 'Each pad: gated head/rim/rimshot recall >= 0.85 where present, background >= 0.98; session macro recall >= 0.90. Physical validation still required.',
               'validation_scope': 'Development folds; previously inspected captures are not a pristine independent release test.'}
     (output / 'protocol.json').write_text(json.dumps(config, indent=2) + '\n')
@@ -96,31 +108,40 @@ def run(manifest, output, minimum_ratio=3., cnn_epochs=80, linear_epochs=400, ca
     if max(r['label'] for r in rows) != 3:
         raise ValueError('Comparison requires all four classes')
     eligible = {r['example_id']: training_evidence(r, minimum_ratio) for r in rows}
+    if few_shot and calibration_adapter == 'none':
+        raise ValueError('Few-shot support training requires a support/query calibration protocol')
     if calibration_adapter != 'none':
         from sensor_adapter import support_normalize
         original_waveforms = {r['example_id']: r['waveform'] for r in rows}
-        rows, adapters = support_normalize(rows, eligible)
+        rows, adapters = support_normalize(rows, eligible, 'gain' if calibration_adapter == 'sensor-gain' else 'demix', keep_support=few_shot)
         if calibration_adapter == 'support-control':
             rows = [{**r, 'waveform': original_waveforms[r['example_id']]} for r in rows]
         for adapter in adapters.values():
-            adapter['applied'] = calibration_adapter == 'sensor-demix'
+            adapter['applied'] = calibration_adapter != 'support-control'
         (output / 'sensor-adapters.json').write_text(json.dumps(adapters, indent=2) + '\n')
     splits = list(validation_splits(rows, 3 if calibration_adapter == 'none' else 2))
+    support = [r for r in rows if r.get('training_only_support')]
+    rows = [r for r in rows if not r.get('training_only_support')]
     (output / 'provenance.json').write_text(json.dumps([
         {**{k: v for k, v in r.items() if k not in ('features', 'waveform')},
          'positive_training_evidence': eligible[r['example_id']]} for r in rows], indent=2) + '\n')
+    if support:
+        (output / 'support-training-provenance.json').write_text(json.dumps([
+            {**{k: v for k, v in r.items() if k not in ('features', 'waveform')},
+             'positive_training_evidence': eligible[r['example_id']]} for r in support], indent=2) + '\n')
     summary = {'real_windows': len(rows), 'classes': dict(Counter(LABELS[r['label']] for r in rows)),
-               'training_eligible': sum(eligible[r['example_id']] for r in rows), 'excluded_by_extractor': excluded}
+               'training_eligible': sum(eligible[r['example_id']] for r in rows), 'excluded_by_extractor': excluded,
+               'training_only_support_windows': len(support)}
     (output / 'dataset.json').write_text(json.dumps(summary, indent=2) + '\n')
     print(json.dumps(summary), flush=True)
     reports = []
     for architecture, epochs in config['epochs'].items():
         folds = []
         for kind, name, training, held in splits:
-            selected = [r for r in training if eligible[r['example_id']]]
+            selected = augmented([r for r in training if eligible[r['example_id']]], augmentation)
             print(f'Training {architecture}: {kind} holdout {name}, {len(selected)} training / {len(held)} held-out windows', flush=True)
             tf.keras.backend.clear_session()
-            model = fit_model(selected, epochs, 4, architecture, balance_sessions=True)
+            model = fit_model(selected, epochs, 4, architecture, balance_sessions=True, seed=seed)
             strong = [r for r in held if eligible[r['example_id']]]
             weak = [r for r in held if not eligible[r['example_id']]]
             fold = {'kind': kind, 'name': name, 'training_windows': len(selected), 'held_out_windows': len(held),
@@ -134,7 +155,7 @@ def run(manifest, output, minimum_ratio=3., cnn_epochs=80, linear_epochs=400, ca
             print(json.dumps({'architecture': architecture, 'kind': kind, 'name': name,
                               'gated_recall': fold['all']['live_confidence_gate']['recall']}), flush=True)
         tf.keras.backend.clear_session()
-        model = fit_model([r for r in rows if eligible[r['example_id']]], epochs, 4, architecture, balance_sessions=True)
+        model = fit_model(augmented([r for r in rows + support if eligible[r['example_id']]], augmentation), epochs, 4, architecture, balance_sessions=True, seed=seed)
         conversion = export(model, output / architecture, rows)
         pad_folds = [f for f in folds if f['kind'] == 'pad']
         session_folds = [f for f in folds if f['kind'] == 'session']
@@ -144,7 +165,7 @@ def run(manifest, output, minimum_ratio=3., cnn_epochs=80, linear_epochs=400, ca
         report = {'architecture': architecture, 'parameters': model.count_params(), 'folds': folds,
                   'conversion': conversion, 'numerical_promotion_gate_passed': pad_pass and session_pass,
                   'physical_validation_required': True, 'promoted': False,
-                  'runtime_input_compatible': calibration_adapter != 'sensor-demix',
+                  'runtime_input_compatible': config['runtime_input_compatible'],
                   'mean_pad_gated_macro_recall': statistics.mean(f['all']['live_confidence_gate']['present_class_macro_recall'] for f in pad_folds),
                   'mean_session_gated_macro_recall': statistics.mean(f['all']['live_confidence_gate']['present_class_macro_recall'] for f in session_folds),
                   'final_training_metrics_not_validation': classification_metrics(model, rows)}
@@ -160,13 +181,17 @@ def main():
     parser.add_argument('--minimum-training-ratio', type=float, default=3.)
     parser.add_argument('--cnn-epochs', type=int, default=80)
     parser.add_argument('--linear-epochs', type=int, default=400)
-    parser.add_argument('--calibration-adapter', choices=('none', 'sensor-demix', 'support-control'), default='none')
+    parser.add_argument('--calibration-adapter', choices=('none', 'sensor-demix', 'sensor-gain', 'support-control'), default='none')
+    parser.add_argument('--augmentation', choices=('none', 'sensor-gain'), default='none')
+    parser.add_argument('--few-shot-support', action='store_true',
+                        help='Also train on each pad\'s reserved support session (never evaluated)')
+    parser.add_argument('--seed', type=int, default=1729)
     args = parser.parse_args()
     if not np.isfinite(args.minimum_training_ratio) or args.minimum_training_ratio < 1:
         parser.error('minimum-training-ratio must be finite and >= 1')
     if not all(1 <= value <= 10000 for value in (args.cnn_epochs, args.linear_epochs)):
         parser.error('epochs must be in 1..10000')
-    run(args.manifest, args.output_dir, args.minimum_training_ratio, args.cnn_epochs, args.linear_epochs, args.calibration_adapter)
+    run(args.manifest, args.output_dir, args.minimum_training_ratio, args.cnn_epochs, args.linear_epochs, args.calibration_adapter, args.augmentation, args.few_shot_support, args.seed)
 
 
 if __name__ == '__main__':

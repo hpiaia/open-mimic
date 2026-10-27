@@ -213,6 +213,60 @@ int main()
         {
             throw std::runtime_error("A startup strike contaminated the calibrated quiet baseline");
         }
+        // A pad-specific predictor overrides the shared one; class gates are per pad.
+        const auto constant = [](unsigned zone, float probability)
+        {
+            return [zone, probability](const mimic::DrumFeatures&)
+            {
+                mimic::DrumPrediction value;
+                value.valid = true;
+                value.classIndex = zone;
+                value.probabilities.fill(0.0f);
+                value.probabilities[zone] = probability;
+                return value;
+            };
+        };
+        mimic::TriggerEngine mixed(constant(1, 0.9f));
+        mimic::TriggerPad own{0, 1, 2};
+        own.predictor = constant(2, 0.6f);
+        own.gate = {0.0f, 0.65f, 0.55f, 0.65f};
+        mimic::TriggerPad shared{2, 3, 2};
+        shared.gate = {0.0f, 0.95f, 0.65f, 0.65f};
+        mixed.configure({own, shared});
+        frame.fill(2);
+        for (unsigned i = 0; i < 256; ++i)
+        {
+            mixed.processFrame(0, frame);
+        }
+        mixed.beginBatch();
+        frame[0] = frame[2] = 702;
+        for (unsigned i = 0; i < 32; ++i)
+        {
+            mixed.processFrame(0, frame);
+        }
+        if (mixed.eventCount() != 1 || mixed.event(0).pad != 0 || mixed.event(0).zone != 2)
+        {
+            throw std::runtime_error("Per-pad predictor or per-class gate was not applied");
+        }
+        if (mixed.rejectedCount() != 1)
+        {
+            throw std::runtime_error("Shared pad with a stricter head gate was not rejected");
+        }
+        mimic::TriggerPad invalid{0, 1, 2};
+        invalid.gate = {0.0f, 1.5f, 0.65f, 0.65f};
+        bool rejectedGate = false;
+        try
+        {
+            mixed.configure({invalid});
+        }
+        catch (const std::invalid_argument&)
+        {
+            rejectedGate = true;
+        }
+        if (!rejectedGate)
+        {
+            throw std::runtime_error("An out-of-range class gate was accepted");
+        }
         mimic::TriggerEngine bootstrap(
             [](const mimic::DrumFeatures&)
             {

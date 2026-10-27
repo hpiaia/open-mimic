@@ -12,12 +12,22 @@
 
 namespace mimic
 {
+// Minimum class probability before a classified window becomes an event.
+// Index 0 (background) is unused. The former fixed 0.65 is the default.
+using ClassGate = std::array<float, 4>;
+inline constexpr ClassGate defaultClassGate{0.65f, 0.65f, 0.65f, 0.65f};
+
 struct TriggerPad
 {
+    using Predictor = std::function<DrumPrediction(const DrumFeatures&)>;
     int head = -1;
     int rim = -1;
     int zones = 2;
     PadResponse response;
+    // Optional pad-specific classifier (for example a calibration fine-tune).
+    // Empty means the engine's shared predictor is used.
+    Predictor predictor;
+    ClassGate gate = defaultClassGate;
 };
 
 struct TriggerEvent
@@ -34,7 +44,7 @@ struct TriggerEvent
 class TriggerEngine final
 {
 public:
-    using Predictor = std::function<DrumPrediction(const DrumFeatures&)>;
+    using Predictor = TriggerPad::Predictor;
     explicit TriggerEngine(Predictor predict);
     void configure(const std::vector<TriggerPad>& pads);
     void reset() noexcept;

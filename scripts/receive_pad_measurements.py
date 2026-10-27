@@ -68,9 +68,18 @@ class CalibrationRejected(ValueError):
     pass
 
 
+class ModelRejected(ValueError):
+    pass
+
+
+class ModelAdaptationUnavailable(ValueError):
+    pass
+
+
 class Receiver:
-    def __init__(self, host: str, output: Path):
+    def __init__(self, host: str, output: Path, ml_python: Path | None = None, adapt_models: bool = True):
         self.host, self.output = host, output
+        self.ml_python, self.adapt_models = ml_python, adapt_models
         self.ssh = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
                     "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2", host]
 
@@ -199,6 +208,87 @@ class Receiver:
         publish_json(destination / "download.json", report)
         print(f"Response applied: {pad}; sensitivity and per-articulation velocity are calibrated", flush=True)
 
+    def model_result(self, pad: str, weights: bytes, description: str, expected_sha256: str):
+        token = uuid.uuid4().hex
+        staging = f"{ROOT}/models/staging"
+        self.remote(f"mkdir -p {staging}; cat > {staging}/{token}.tflite", content=weights, timeout=60)
+        self.remote(f"cat > {staging}/{token}.model", content=description.encode(), timeout=15)
+        self.command("model-load", pad, token)
+        for _ in range(80):
+            state = json.loads(self.remote(f"cat {RUNTIME}/status.json", timeout=15))
+            definition = next((row for row in state.get("pads", []) if row["id"] == pad), {})
+            model = definition.get("model")
+            if model is None:
+                raise ModelRejected("The module software does not support pad models; update it first")
+            if model.get("attempt") != token:
+                time.sleep(.25)
+                continue
+            if model.get("error"):
+                raise ModelRejected(model["error"])
+            if model.get("state") == "active" and model.get("sha256") == expected_sha256:
+                return
+            time.sleep(.25)
+        raise TimeoutError("The module did not confirm the pad model")
+
+    def adaptation_tool(self, *arguments) -> dict:
+        script = Path(__file__).resolve().parent / "pad_model_adaptation.py"
+        environment = {**os.environ, "PYTHONPATH": str(script.parent)}
+        result = subprocess.run([str(self.ml_python), str(script), *arguments], capture_output=True,
+                                text=True, timeout=1800, env=environment)
+        lines = [line for line in result.stdout.splitlines() if line.startswith("{")]
+        if not lines:
+            raise ValueError(f"model adaptation produced no result: {result.stderr[-500:]}")
+        document = json.loads(lines[-1])
+        if "error" in document:
+            raise ModelAdaptationUnavailable(document["error"])
+        if result.returncode != 0:
+            raise ValueError(f"model adaptation failed: {result.stderr[-500:]}")
+        return document
+
+    def adapt_model(self, pad: str, destination: Path, report: dict):
+        """Fine-tune the kit's base classifier for one pad and load it on the module.
+
+        Runs after the archive is acknowledged, so a slow or failed adaptation never
+        delays releasing the module's copy. The module keeps its shared model as fallback.
+        """
+        if not self.adapt_models or self.ml_python is None:
+            return
+        models = self.output / ".models"
+        models.mkdir(exist_ok=True)
+        manifest = models / "manifest.json"
+        self.adaptation_tool("manifest", "--measurements", str(self.output), "--output", str(manifest))
+        base = models / "base"
+        if not (base / "base.json").exists():
+            print("Training the kit's shared base model (one time, a few minutes)...", flush=True)
+            self.adaptation_tool("base", "--manifest", str(manifest), "--output-dir", str(base),
+                                 "--measurements", str(self.output))
+        base_sha256 = json.loads((base / "base.json").read_text())["model_sha256"]
+        archived = sum(1 for path in self.output.glob(f"{pad}/*/download.json")
+                       if json.loads(path.read_text()).get("device_captures_removed"))
+        previous = report.get("model_adaptation", {})
+        if (previous.get("state") == "applied" and previous.get("base_sha256") == base_sha256
+                and previous.get("archived_sessions") == archived):
+            return
+        print(f"Adapting the classifier to {pad} from {archived} archived session(s)...", flush=True)
+        output = models / "pads" / pad / uuid.uuid4().hex
+        try:
+            result = self.adaptation_tool("adapt", "--manifest", str(manifest), "--base-dir", str(base),
+                                          "--pad", pad, "--output-dir", str(output), "--measurements", str(self.output))
+            self.model_result(pad, Path(result["tflite"]).read_bytes(), Path(result["sidecar"]).read_text(),
+                              result["model_sha256"])
+        except (ModelAdaptationUnavailable, ModelRejected) as error:
+            report["model_adaptation"] = {"state": "unavailable", "reason": str(error)[:500], "base_sha256": base_sha256,
+                                          "archived_sessions": archived}
+            publish_json(destination / "download.json", report)
+            print(f"Pad model not applied; the module keeps its shared model: {error}", flush=True)
+            return
+        report["model_adaptation"] = {"state": "applied", "base_sha256": base_sha256, "model_sha256": result["model_sha256"],
+                                      "source": result["source"], "archived_sessions": archived, "windows": result["windows"],
+                                      "gate": result["gate"], "artifacts": str(output)}
+        publish_json(destination / "download.json", report)
+        publish_json(models / "pads" / (pad + ".json"), result)
+        print(f"Pad model applied: {pad} ({result['windows']} windows, model {result['model_sha256'][:12]})", flush=True)
+
     def calibrate_existing(self):
         latest = {}
         for path in self.output.glob("*/*/download.json"):
@@ -212,6 +302,7 @@ class Receiver:
                 latest[pad] = (session, path.parent, report)
         for pad, (session, destination, report) in latest.items():
             self.calibrate(pad, session, destination, report)
+            self.adapt_model(pad, destination, report)
 
     def acknowledge(self, pad: str, session: str, destination: Path, report: dict):
         self.calibrate(pad, session, destination, report)
@@ -225,6 +316,7 @@ class Receiver:
                 report["device_captures_removed"] = True
                 publish_json(destination / "download.json", report)
                 print(f"Archived and verified {pad}/{session}", flush=True)
+                self.adapt_model(pad, destination, report)
                 return
             time.sleep(0.2)
         raise ValueError("archive verified locally; module acknowledgment is still pending")
@@ -307,6 +399,11 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "measurements")
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--import-existing", action="store_true")
+    parser.add_argument("--no-model-adaptation", action="store_true",
+                        help="Archive and calibrate responses only; do not fine-tune pad classifiers")
+    parser.add_argument("--ml-python", type=Path,
+                        default=Path(__file__).resolve().parents[1] / "build/ml-venv/bin/python",
+                        help="Python with TensorFlow for pad model adaptation")
     args = parser.parse_args()
     if not HOST.fullmatch(args.host):
         parser.error("invalid SSH host")
@@ -318,7 +415,10 @@ def main() -> int:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         parser.exit(1, "Another capture receiver already owns this destination.\n")
-    receiver = Receiver(args.host, args.output.resolve())
+    ml_python = args.ml_python if args.ml_python.exists() else None
+    if not args.no_model_adaptation and ml_python is None:
+        print(f"Pad model adaptation disabled: {args.ml_python} is missing", flush=True)
+    receiver = Receiver(args.host, args.output.resolve(), ml_python, not args.no_model_adaptation)
     print(f"Mimic capture receiver: {args.host}", flush=True)
     print(f"Destination: {args.output.resolve()}", flush=True)
     if not args.once:
