@@ -8,8 +8,7 @@ MainComponent::MainComponent()
     theme.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff1c2836));
     theme.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffedf3fa));
     setLookAndFeel(&theme);
-    for (auto* label :
-         {&title, &subtitle, &networkTitle, &ssid, &ip, &connection, &message, &touchStatus})
+    for (auto* label : {&title, &subtitle, &networkTitle, &ssid, &ip, &connection, &message})
     {
         addAndMakeVisible(*label);
         label->setColour(juce::Label::textColourId, juce::Colour(0xffedf3fa));
@@ -53,8 +52,7 @@ MainComponent::MainComponent()
     connection.setJustificationType(juce::Justification::centredRight);
     message.setText("Select a function", juce::dontSendNotification);
     message.setColour(juce::Label::textColourId, accent);
-    touchStatus.setText("Touch ready", juce::dontSendNotification);
-    for (auto* button : {&calibrate, &triggers, &audio, &aux, &midi, &padMidi})
+    for (auto* button : {&calibrate, &triggerSetup, &triggers, &audio, &aux, &midi, &padMidi})
     {
         addAndMakeVisible(*button);
         button->setMouseCursor(juce::MouseCursor::PointingHandCursor);
@@ -79,6 +77,14 @@ MainComponent::MainComponent()
         padCalibration.setVisible(true);
         padCalibration.toFront(true);
     };
+    addChildComponent(triggerSettings);
+    triggerSettings.onClose = [this] { triggerSettings.setVisible(false); };
+    triggerSetup.onClick = [this]
+    {
+        triggerSettings.show();
+        triggerSettings.setVisible(true);
+        triggerSettings.toFront(true);
+    };
     addChildComponent(audioDebug);
     audioDebug.onClose = [this] { audioDebug.setVisible(false); };
     audio.onClick = [this]
@@ -100,7 +106,6 @@ MainComponent::MainComponent()
         midiPanel.setVisible(true);
         midiPanel.toFront(true);
     };
-    addMouseListener(&touchListener, true);
     setSize(1024, 600);
     startTimerHz(5);
 }
@@ -108,7 +113,6 @@ MainComponent::MainComponent()
 MainComponent::~MainComponent()
 {
     stopTimer();
-    removeMouseListener(&touchListener);
     setLookAndFeel(nullptr);
 }
 
@@ -121,25 +125,13 @@ void MainComponent::paint(juce::Graphics& g)
     g.fillRoundedRectangle(networkBounds.toFloat(), 12.0f);
 }
 
-void MainComponent::paintOverChildren(juce::Graphics& g)
-{
-    if (taps > 0)
-    {
-        g.setColour(accent.withAlpha(0.8f));
-        g.drawEllipse(static_cast<float>(lastTouch.x - 9),
-                      static_cast<float>(lastTouch.y - 9),
-                      18.0f,
-                      18.0f,
-                      2.0f);
-    }
-}
-
 void MainComponent::resized()
 {
     audioDebug.setBounds(getLocalBounds().withTrimmedTop(104).reduced(36, 0));
     auxInput.setBounds(audioDebug.getBounds());
     midiPanel.setBounds(audioDebug.getBounds());
     padCalibration.setBounds(audioDebug.getBounds());
+    triggerSettings.setBounds(audioDebug.getBounds());
     auto area = getLocalBounds().reduced(36, 20);
     auto header = area.removeFromTop(43);
     systemStatus.setBounds(header.removeFromRight(288));
@@ -163,29 +155,19 @@ void MainComponent::resized()
     juce::Grid grid;
     using Track = juce::Grid::TrackInfo;
     using Fr = juce::Grid::Fr;
-    grid.templateColumns = {Track(Fr(1)), Track(Fr(1)), Track(Fr(1))};
+    grid.templateColumns = {Track(Fr(1)), Track(Fr(1)), Track(Fr(1)), Track(Fr(1))};
     grid.templateRows = {Track(Fr(1)), Track(Fr(1))};
     grid.setGap(juce::Grid::Px(16));
     grid.items = {juce::GridItem(calibrate),
+                  juce::GridItem(triggerSetup),
+                  juce::GridItem(padMidi),
                   juce::GridItem(triggers),
                   juce::GridItem(audio),
                   juce::GridItem(aux),
-                  juce::GridItem(midi),
-                  juce::GridItem(padMidi)};
+                  juce::GridItem(midi)};
     grid.performLayout(buttons);
     area.removeFromTop(12);
     message.setBounds(area.removeFromTop(30));
-    touchStatus.setBounds(area.removeFromBottom(26));
-}
-
-void MainComponent::recordTouch(const juce::MouseEvent& event)
-{
-    lastTouch = event.getEventRelativeTo(this).getPosition();
-    ++taps;
-    touchStatus.setText("Touch events: " + juce::String(taps) + "   Position: "
-                            + juce::String(lastTouch.x) + ", " + juce::String(lastTouch.y),
-                        juce::dontSendNotification);
-    repaint();
 }
 
 void MainComponent::show(const juce::String& text)

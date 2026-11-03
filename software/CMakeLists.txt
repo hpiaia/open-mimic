@@ -94,9 +94,6 @@ target_link_libraries(mimic-trigger-replay PRIVATE mimic-triggers)
 if(MIMIC_USE_LITERT)
     target_link_libraries(mimic-trigger-replay PRIVATE mimic-ml)
     target_compile_definitions(mimic-trigger-replay PRIVATE MIMIC_USE_LITERT=1)
-    add_executable(mimic-drum-benchmark tools/benchmark_drum.cpp)
-    target_link_libraries(mimic-drum-benchmark PRIVATE mimic-ml)
-    install(TARGETS mimic-drum-benchmark RUNTIME DESTINATION bin)
 endif()
 install(TARGETS mimic-trigger-replay RUNTIME DESTINATION bin)
 install(DIRECTORY models/shared-drum-pilot DESTINATION share/open-mimic/models)
@@ -154,6 +151,7 @@ if(MIMIC_BUILD_UI)
         mimic/src/MainComponent.cpp
         mimic/src/MidiPanel.cpp
         mimic/src/PadCalibrationPanel.cpp
+        mimic/src/TriggerSettingsPanel.cpp
         mimic/src/NetworkMonitor.cpp
         mimic/src/SystemMonitor.cpp
     )

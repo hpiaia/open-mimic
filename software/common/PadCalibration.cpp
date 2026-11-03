@@ -21,6 +21,24 @@ bool hexIdentity(const std::string& value, std::size_t size)
 {
     return value.size() == size && value.find_first_not_of("0123456789abcdef") == std::string::npos;
 }
+
+void validateZoneRule(const ZoneRule& rule)
+{
+    if (!rule.calibrated)
+    {
+        return;
+    }
+    if (!finiteRange(rule.headRatioCeiling, 0.0f, 64.0f)
+        || !finiteRange(rule.rimRatioFloor, 0.0f, 64.0f)
+        || rule.rimRatioFloor <= rule.headRatioCeiling
+        || !finiteRange(rule.rimshotHead, 2.0f, 4096.0f)
+        || !finiteRange(rule.rimshotRim, 2.0f, 4096.0f)
+        || !finiteRange(rule.decayMs[0], 2.0f, 500.0f)
+        || !finiteRange(rule.decayMs[1], 2.0f, 500.0f))
+    {
+        throw std::runtime_error("Invalid calibration zone rule");
+    }
+}
 } // namespace
 
 void validatePadResponse(const PadResponse& response, int zones)
@@ -56,6 +74,11 @@ void validatePadResponse(const PadResponse& response, int zones)
             throw std::runtime_error("Invalid calibration velocity range or hit count");
         }
     }
+    if (zones == 1 && response.zone.calibrated)
+    {
+        throw std::runtime_error("Single-zone pads carry no zone rule");
+    }
+    validateZoneRule(response.zone);
 }
 
 PadCalibration readPadCalibration(std::istream& input)
@@ -64,7 +87,8 @@ PadCalibration readPadCalibration(std::istream& input)
     PadCalibration value;
     std::string field;
     unsigned version = 0;
-    if (!(input >> field >> version) || field != "OPEN_MIMIC_RESPONSE" || version != 1)
+    if (!(input >> field >> version) || field != "OPEN_MIMIC_RESPONSE"
+        || (version != 1 && version != 2))
     {
         throw std::runtime_error("Unsupported pad response profile");
     }
@@ -116,6 +140,25 @@ PadCalibration readPadCalibration(std::istream& input)
             throw std::runtime_error("Malformed articulation response");
         }
     }
+    if (version >= 2)
+    {
+        // "rule none" keeps the measured response without a head/rim separation.
+        tag("rule");
+        input >> field;
+        if (field != "none")
+        {
+            auto& rule = value.response.zone;
+            std::istringstream first(field);
+            first.imbue(std::locale::classic());
+            if (!(first >> rule.headRatioCeiling)
+                || !(input >> rule.rimRatioFloor >> rule.rimshotHead >> rule.rimshotRim
+                     >> rule.decayMs[0] >> rule.decayMs[1]))
+            {
+                throw std::runtime_error("Malformed zone rule");
+            }
+            rule.calibrated = true;
+        }
+    }
     input >> std::ws;
     if (!input.eof())
     {
@@ -131,7 +174,7 @@ std::string writePadCalibration(const PadCalibration& value)
     validatePadResponse(value.response, value.zones);
     std::ostringstream output;
     output.imbue(std::locale::classic());
-    output << std::setprecision(9) << "OPEN_MIMIC_RESPONSE 1\npad " << value.pad << "\nsession "
+    output << std::setprecision(9) << "OPEN_MIMIC_RESPONSE 2\npad " << value.pad << "\nsession "
            << value.session << "\nroute " << value.head << ' ' << value.rim << ' ' << value.zones
            << "\nsource " << value.sourceHash << '\n';
     for (unsigned index = 0; index < 2; ++index)
@@ -145,6 +188,17 @@ std::string writePadCalibration(const PadCalibration& value)
         const auto& range = value.response.articulations[index];
         output << "zone " << index + 1 << ' ' << range.minimum << ' ' << range.maximum << ' '
                << range.exponent << ' ' << range.samples << '\n';
+    }
+    const auto& rule = value.response.zone;
+    if (rule.calibrated)
+    {
+        output << "rule " << rule.headRatioCeiling << ' ' << rule.rimRatioFloor << ' '
+               << rule.rimshotHead << ' ' << rule.rimshotRim << ' ' << rule.decayMs[0] << ' '
+               << rule.decayMs[1] << '\n';
+    }
+    else
+    {
+        output << "rule none\n";
     }
     return output.str();
 }
@@ -160,5 +214,138 @@ unsigned calibratedVelocity(float peak, const VelocityResponse& response) noexce
         std::clamp((peak - response.minimum) / (response.maximum - response.minimum), 0.0f, 1.0f);
     return static_cast<unsigned>(
         std::clamp(std::lround(1.0 + 126.0 * std::pow(normalized, response.exponent)), 1L, 127L));
+}
+
+namespace
+{
+struct SettingRange
+{
+    const char* key;
+    float minimum;
+    float maximum;
+    bool allowAuto;
+};
+
+// Keys double as the on-disk and command vocabulary.
+constexpr std::array<SettingRange, 8> settingRanges{{
+    {"threshold", 0.0f, 1000.0f, false},
+    {"mask", 2.0f, 50.0f, false},
+    {"retrigger", 0.0f, 100.0f, false},
+    {"decay", 2.0f, 500.0f, true},
+    {"rimshot-head", 2.0f, 4095.0f, true},
+    {"rimshot-rim", 2.0f, 4095.0f, true},
+    {"balance", -100.0f, 100.0f, false},
+    {"zone-mode", 0.0f, 2.0f, false},
+}};
+
+float& settingField(TriggerSettings& settings, const std::string& key, float& zoneMode)
+{
+    if (key == "threshold")
+    {
+        return settings.threshold;
+    }
+    if (key == "mask")
+    {
+        return settings.maskMs;
+    }
+    if (key == "retrigger")
+    {
+        return settings.retriggerCancel;
+    }
+    if (key == "decay")
+    {
+        return settings.decayMs;
+    }
+    if (key == "rimshot-head")
+    {
+        return settings.rimshotThreshold[0];
+    }
+    if (key == "rimshot-rim")
+    {
+        return settings.rimshotThreshold[1];
+    }
+    if (key == "balance")
+    {
+        return settings.balance;
+    }
+    if (key == "zone-mode")
+    {
+        zoneMode = static_cast<float>(settings.zoneMode);
+        return zoneMode;
+    }
+    throw std::runtime_error("Unknown trigger setting: " + key);
+}
+} // namespace
+
+void applyTriggerSetting(TriggerSettings& settings, const std::string& key, float value)
+{
+    const auto range = std::find_if(settingRanges.begin(),
+                                    settingRanges.end(),
+                                    [&key](const SettingRange& item) { return key == item.key; });
+    if (range == settingRanges.end())
+    {
+        throw std::runtime_error("Unknown trigger setting: " + key);
+    }
+    const bool automatic = range->allowAuto && value < 0.0f;
+    if (!std::isfinite(value) || (!automatic && (value < range->minimum || value > range->maximum)))
+    {
+        throw std::runtime_error("Trigger setting out of range: " + key);
+    }
+    if (key == "zone-mode")
+    {
+        settings.zoneMode = static_cast<int>(std::lround(value));
+        return;
+    }
+    float unused = 0.0f;
+    settingField(settings, key, unused) = automatic ? -1.0f : value;
+}
+
+void validateTriggerSettings(const TriggerSettings& settings)
+{
+    auto copy = settings;
+    for (const auto& range : settingRanges)
+    {
+        float zoneMode = 0.0f;
+        const auto value = settingField(copy, range.key, zoneMode);
+        applyTriggerSetting(copy, range.key, value);
+    }
+}
+
+TriggerSettings readTriggerSettings(std::istream& input)
+{
+    input.imbue(std::locale::classic());
+    std::string field;
+    unsigned version = 0;
+    if (!(input >> field >> version) || field != "OPEN_MIMIC_TRIGGER" || version != 1)
+    {
+        throw std::runtime_error("Unsupported trigger settings file");
+    }
+    TriggerSettings settings;
+    std::string key;
+    while (input >> key)
+    {
+        float value = 0.0f;
+        if (!(input >> value))
+        {
+            throw std::runtime_error("Malformed trigger setting: " + key);
+        }
+        applyTriggerSetting(settings, key, value);
+    }
+    return settings;
+}
+
+std::string writeTriggerSettings(const TriggerSettings& settings)
+{
+    validateTriggerSettings(settings);
+    std::ostringstream output;
+    output.imbue(std::locale::classic());
+    output << std::setprecision(9) << "OPEN_MIMIC_TRIGGER 1\n";
+    auto copy = settings;
+    for (const auto& range : settingRanges)
+    {
+        float zoneMode = 0.0f;
+        output << range.key << ' ' << settingField(copy, range.key, zoneMode) << '\n';
+    }
+    return output.str();
 }
 } // namespace mimic

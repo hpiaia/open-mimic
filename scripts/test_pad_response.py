@@ -69,7 +69,12 @@ class ResponseTests(unittest.TestCase):
                 self.assertGreater(response["maximum"] - response["minimum"], 8)
             self.assertLess(profile["sensors"][0]["threshold"], 16)
             native = native_profile(profile)
-            self.assertTrue(native.startswith("OPEN_MIMIC_RESPONSE 1\n"))
+            self.assertTrue(native.startswith("OPEN_MIMIC_RESPONSE 2\n"))
+            self.assertIn("\nrule ", native)
+            rule = profile["zone_rule"]
+            self.assertLess(rule["head_ratio_ceiling"], rule["rim_ratio_floor"])
+            self.assertGreater(rule["rimshot_rim"], profile["sensors"][1]["threshold"])
+            self.assertTrue(all(2 <= value <= 500 for value in rule["decay_ms"]))
             self.assertIn("route 26 27 2\n", native)
             self.assertIn("zone 3 ", native)
 
@@ -93,6 +98,8 @@ class ResponseTests(unittest.TestCase):
             self.assertEqual(profile["rim"], 27)
             self.assertEqual(set(profile["articulations"]), {"head"})
             self.assertIn("zone 2 0 2048 1 0\n", native_profile(profile))
+            self.assertTrue(native_profile(profile).endswith("rule none\n"))
+            self.assertIsNone(profile["zone_rule"])
 
     def test_head_only_activity_during_rim_take_cannot_define_rim_velocity(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -351,3 +351,81 @@ Deployed state: daemon `328c77d5…` (backup `/usr/bin/mimicd.before-pad-models`
 `8c22eb0e…`), seven active pad models from base `8f080af3…`, shared factory
 model unchanged. Expected behaviour on this kit is the within-kit study's
 per-pad fine-tune column, not an independent test of these exact weights.
+
+## Two-stage trigger policy (installed 2026-10-28)
+
+Motivation, from the owner's recordings: after a real hit the signal stays
+above the calibrated threshold for 30-85 ms (median per pad; up to 110-143 ms).
+The previous engine rearmed only after sixteen consecutive quiet frames, so it
+was deaf for that long after every hit and swallowed rolls, flams and double
+strokes. Separately, the rim-over-head ratio of pure head hits (95th percentile
+0.14-0.43) and of pure rim hits (5th percentile 1.27-1.49) never overlap on
+any dual-zone pad except Tom 4 (0.14 / 0.17, weak rim piezo), while the
+"rimshot" takes span both bands, which is why a classifier trained on them
+struggles. The [Mimic Pro manual](manual-trigger-reference.md) describes the
+same split: Threshold, Detect Time, Mask Time and Retrigger Cancel decide
+*that* a hit happened; Rimshot Threshold per piezo and Head/Rim Balance decide
+*which zone*.
+
+`TriggerEngine` now implements that split:
+
+1. **Stage one, conventional.** A hit is energy above the measured threshold
+   (plus the player's Threshold offset) that also exceeds the decaying peak
+   envelope of the previous hit by the retrigger factor
+   `1.05 + 1.95 x RetriggerCancel/100`. The envelope is a per-sensor peak
+   follower with the calibrated time constant. Mask Time (default 8 ms, 2-50)
+   is the minimum spacing between hits. There is no quiet-rearm requirement
+   after the first quiet period. The 32-frame interpretation window, clipping
+   rejection and the uncalibrated bootstrap are unchanged. Velocity still uses
+   the calibrated per-articulation response.
+2. **Stage two, rule first, classifier for ambiguity.** The calibrated zone
+   rule labels the window with Mimic Pro semantics: the rim-over-head ratio
+   against the geometric centre of the measured bands picks head or rim, and
+   that zone becomes a rimshot when the *other* piezo exceeds its rimshot level.
+   The classifier (pad model or shared model) is consulted only for ambiguous
+   windows (ratio between the single-zone bands or within 25% of a band edge,
+   or a peak within 25% of a rimshot level), and its answer is used only when
+   its probability clears the per-class gate. Soft rimshots whose rim coupling
+   stays under the calibrated level therefore read as head by the rule alone,
+   exactly as on the Mimic; lowering the rimshot threshold or the hybrid model
+   recovers them. **A detected hit is never dropped by
+   the classifier**; a rejected or "background" verdict falls back to the rule.
+   `TriggerEvent` reports `ruleZone` and `modelDecided`.
+
+Player settings per pad (`/var/lib/mimic/pads/triggers/PAD.trigger`,
+`mimicd pad-command trigger PAD KEY VALUE`, `trigger-reset PAD`):
+
+| Key | Range | Default | Meaning |
+| --- | --- | --- | --- |
+| `threshold` | 0-1000 | 4 | ADC counts added to the measured onset threshold |
+| `mask` | 2-50 ms | 8 | Mask Time |
+| `retrigger` | 0-100 | 30 | Retrigger Cancel: required jump above the envelope |
+| `decay` | 2-500 ms or -1 | -1 (calibrated) | Envelope time constant override |
+| `rimshot-head` | 2-4095 or -1 | -1 (calibrated) | Head piezo level for a rimshot on rim hits |
+| `rimshot-rim` | 2-4095 or -1 | -1 (calibrated) | Rim piezo level for a rimshot on head hits |
+| `balance` | -100..100 | 0 | Head/Rim Balance: shifts both ratio boundaries by 2^(v/100) |
+| `zone-mode` | 0/1/2 | 0 | 0 rule + model, 1 rule only, 2 model first |
+
+The touchscreen **Trigger settings** screen exposes these per pad with a
+Mimic-style last-hit meter: head and rim peaks on a log scale with the
+effective rimshot levels drawn as yellow lines, the ratio, and whether the rule
+or the model decided. Status JSON carries `pads[].trigger` (settings, measured
+rule, effective rule, last hit) and `engine.lastHeadPeak/lastRimPeak/
+lastRuleZone/lastModelDecided/modelDecisions`. `cpuPercent` reports the
+daemon's own CPU share so the UI's system CPU figure can be attributed.
+
+Offline evidence (`scripts/trigger_policy_study.py`, profile fitted from one
+session and replayed on another, `build/trigger-policy-study.json`): see the
+table in the commit that installed this policy. Guided takes carry no strike
+timestamps, so event counts are compared with isolated strong hits found by an
+independent quiet-gap detector; rolls legitimately exceed that count. The
+replay tool `mimic-trigger-replay` accepts an optional trigger settings file and
+prints `rule_zone`, `model_decided`, `head_peak` and `rim_peak` per event.
+
+Deployment: `scripts/deploy_module_binaries.sh --mimicd build/mimicd-stage2-arm
+--ui build/mimic-ui-stage2-arm` installs both with `.before-stage2` backups and
+restarts the pad service and the display session. Then run
+`scripts/receive_pad_measurements.py` on the Mac once so every pad receives a
+version 2 profile (zone rule and envelope); until then pads run the generic
+0.5 / 1.5 ratio bands with rimshots only from the band and the fixed 15 ms
+envelope.

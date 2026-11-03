@@ -148,7 +148,7 @@ Comparação direta com o nosso estado atual:
 | Classificador | backbone + heads, int8, classes com threshold individual, posição contínua | CNN float32 [1,69]→[1,4], gate único 0,65 |
 | Condicionamento ao hardware | fingerprint de 32 floats na entrada + MoE | nenhum; modelo genérico |
 | Adaptação ao usuário | fine-tune na nuvem, carregado no drum; fallback de fábrica | retreino completo no Mac |
-| Adaptação sem nuvem | refit da última camada no navegador | experimento `calibration_head_fit.py` desta semana |
+| Adaptação sem nuvem | refit da última camada no navegador | experimento de refit do head (out/2026, script removido; resultados em temporal-classifier.md) |
 | Correção de detecção | patch logístico sobre o logit do detector | não existe |
 | Dados de frota | sim, com vetting LODO | não aplicável |
 

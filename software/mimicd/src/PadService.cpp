@@ -40,6 +40,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <time.h>
 #include <vector>
 
 #ifdef __linux__
@@ -284,6 +285,7 @@ struct PadDefinition
     PadModel model;
     std::string modelError;
     std::string modelAttempt;
+    TriggerSettings settings;
 };
 
 bool validPad(const PadDefinition& pad)
@@ -680,6 +682,29 @@ public:
                 pad.calibrationError = exception.what();
             }
         }
+        std::filesystem::create_directories(dataDirectory / "triggers");
+        for (auto& pad : pads)
+        {
+            try
+            {
+                const auto path = dataDirectory / "triggers" / (pad.id + ".trigger");
+                if (std::filesystem::exists(path))
+                {
+                    std::istringstream input(readSmallText(path));
+                    pad.settings = readTriggerSettings(input);
+                }
+                else if (pad.id == "kick")
+                {
+                    // The manual recommends a longer mask for kick drums.
+                    pad.settings.maskMs = 20.0f;
+                }
+            }
+            catch (const std::exception& exception)
+            {
+                pad.settings = {};
+                error = pad.id + " trigger settings: " + exception.what();
+            }
+        }
         std::filesystem::create_directories(dataDirectory / "models" / "staging");
         for (auto& pad : pads)
         {
@@ -949,6 +974,41 @@ public:
                     throw std::runtime_error("Unknown calibration pad");
                 }
                 receiveProfile(*found, token, verb == "profile-failed");
+            }
+            else if (verb == "trigger" || verb == "trigger-reset")
+            {
+                std::string id, key;
+                float value = 0.0f;
+                input >> id;
+                if (verb == "trigger")
+                {
+                    input >> key >> value;
+                }
+                requireEnd(input);
+                auto found = std::find_if(pads.begin(),
+                                          pads.end(),
+                                          [&](const PadDefinition& pad) { return pad.id == id; });
+                if (found == pads.end())
+                {
+                    throw std::runtime_error("Unknown trigger pad");
+                }
+                auto settings = found->settings;
+                if (verb == "trigger")
+                {
+                    applyTriggerSetting(settings, key, value);
+                }
+                else
+                {
+                    settings = {};
+                }
+                atomicText(dataDirectory / "triggers" / (id + ".trigger"),
+                           writeTriggerSettings(settings));
+                found->settings = settings;
+                configureLive();
+                if (!liveReady && !liveError.empty())
+                {
+                    throw std::runtime_error(liveError);
+                }
             }
             else if (verb == "model-reset")
             {
@@ -1285,8 +1345,13 @@ public:
                << ",\"lastPad\":" << quoted(lastLivePad) << ",\"lastZone\":" << lastLiveZone
                << ",\"lastVelocity\":" << lastLiveVelocity
                << ",\"lastProbability\":" << lastLiveProbability << ",\"lastPeak\":" << lastLivePeak
-               << "},\"pads\":[";
+               << ",\"lastHeadPeak\":" << lastLiveHeadPeak << ",\"lastRimPeak\":" << lastLiveRimPeak
+               << ",\"lastRuleZone\":" << lastLiveRuleZone
+               << ",\"lastModelDecided\":" << (lastLiveModelDecided ? "true" : "false")
+               << ",\"modelDecisions\":" << trigger.modelDecisions()
+               << "},\"cpuPercent\":" << processCpuPercent() << ",\"pads\":[";
         bool separator = false;
+        std::size_t index = 0;
         for (const auto& pad : pads)
         {
             if (separator)
@@ -1301,7 +1366,8 @@ public:
                    << ",\"rimshotNote\":" << pad.rimshotNote
                    << ",\"sd3Instrument\":" << quoted(pad.sd3Instrument)
                    << ",\"calibration\":" << calibrationJson(pad) << ",\"model\":" << modelJson(pad)
-                   << '}';
+                   << ",\"trigger\":" << triggerJson(pad, index) << '}';
+            ++index;
         }
         output << "],\"meters\":[";
         for (std::size_t index = 0; index < displayPeaks.size(); ++index)
@@ -1733,6 +1799,53 @@ private:
         return output.str();
     }
 
+    std::string triggerJson(const PadDefinition& pad, std::size_t index) const
+    {
+        const auto& settings = pad.settings;
+        const auto& measured = pad.calibration.response.zone;
+        ZoneRule effective;
+        if (liveReady)
+        {
+            try
+            {
+                effective = trigger.effectiveRule(index);
+            }
+            catch (const std::exception&)
+            {
+                effective = {};
+            }
+        }
+        const auto hit = lastHitByPad.find(index);
+        std::ostringstream output;
+        output << "{\"threshold\":" << settings.threshold << ",\"maskMs\":" << settings.maskMs
+               << ",\"retriggerCancel\":" << settings.retriggerCancel
+               << ",\"decayMs\":" << settings.decayMs
+               << ",\"rimshotHead\":" << settings.rimshotThreshold[0]
+               << ",\"rimshotRim\":" << settings.rimshotThreshold[1]
+               << ",\"balance\":" << settings.balance << ",\"zoneMode\":" << settings.zoneMode
+               << ",\"measured\":{\"calibrated\":" << (measured.calibrated ? "true" : "false")
+               << ",\"headRatioCeiling\":" << measured.headRatioCeiling
+               << ",\"rimRatioFloor\":" << measured.rimRatioFloor
+               << ",\"rimshotHead\":" << measured.rimshotHead
+               << ",\"rimshotRim\":" << measured.rimshotRim << ",\"decayMs\":["
+               << measured.decayMs[0] << ',' << measured.decayMs[1] << "]}"
+               << ",\"effective\":{\"headRatioCeiling\":" << effective.headRatioCeiling
+               << ",\"rimRatioFloor\":" << effective.rimRatioFloor
+               << ",\"rimshotHead\":" << effective.rimshotHead
+               << ",\"rimshotRim\":" << effective.rimshotRim << ",\"decayMs\":["
+               << effective.decayMs[0] << ',' << effective.decayMs[1] << "]}"
+               << ",\"lastHit\":{\"count\":" << (hit == lastHitByPad.end() ? 0 : hit->second.count)
+               << ",\"headPeak\":" << (hit == lastHitByPad.end() ? 0.0f : hit->second.headPeak)
+               << ",\"rimPeak\":" << (hit == lastHitByPad.end() ? 0.0f : hit->second.rimPeak)
+               << ",\"zone\":" << (hit == lastHitByPad.end() ? 0U : hit->second.zone)
+               << ",\"ruleZone\":" << (hit == lastHitByPad.end() ? 0U : hit->second.ruleZone)
+               << ",\"velocity\":" << (hit == lastHitByPad.end() ? 0U : hit->second.velocity)
+               << ",\"modelDecided\":"
+               << (hit != lastHitByPad.end() && hit->second.modelDecided ? "true" : "false")
+               << "}}";
+        return output.str();
+    }
+
     static std::string calibrationJson(const PadDefinition& pad)
     {
         const auto& profile = pad.calibration;
@@ -1774,7 +1887,12 @@ private:
             {
                 response.calibrated = false;
             }
-            TriggerPad input{pad.head, pad.rim, pad.zoneCount, response};
+            TriggerPad input;
+            input.head = pad.head;
+            input.rim = pad.rim;
+            input.zones = pad.zoneCount;
+            input.response = response;
+            input.settings = pad.settings;
 #ifdef MIMIC_USE_LITERT
             if (pad.model.runtime)
             {
@@ -1866,6 +1984,18 @@ private:
             lastLiveVelocity = event.velocity;
             lastLiveProbability = event.probability;
             lastLivePeak = event.peak;
+            lastLiveHeadPeak = event.sensorPeaks[0];
+            lastLiveRimPeak = event.sensorPeaks[1];
+            lastLiveRuleZone = event.ruleZone;
+            lastLiveModelDecided = event.modelDecided;
+            auto& recent = lastHitByPad[event.pad];
+            recent.headPeak = event.sensorPeaks[0];
+            recent.rimPeak = event.sensorPeaks[1];
+            recent.zone = event.zone;
+            recent.ruleZone = event.ruleZone;
+            recent.velocity = event.velocity;
+            recent.modelDecided = event.modelDecided;
+            recent.count += 1;
             const auto note = event.zone == 1   ? pad.headNote
                               : event.zone == 2 ? pad.rimNote
                                                 : pad.rimshotNote;
@@ -1916,7 +2046,53 @@ private:
     unsigned lastLiveZone = 0;
     unsigned lastLiveVelocity = 0;
     float lastLiveProbability = 0.0f, lastLivePeak = 0.0f;
+    float lastLiveHeadPeak = 0.0f, lastLiveRimPeak = 0.0f;
+    unsigned lastLiveRuleZone = 0;
+    bool lastLiveModelDecided = false;
     std::uint64_t liveEvents = 0, midiQueued = 0, midiDropped = 0, unmappedNotes = 0, dmaResets = 0;
+
+    // Most recent hit per pad slot, shown by the trigger settings screen as the
+    // Mimic-style "last hit" meter used to place rimshot thresholds.
+    struct RecentHit
+    {
+        float headPeak = 0.0f;
+        float rimPeak = 0.0f;
+        unsigned zone = 0;
+        unsigned ruleZone = 0;
+        unsigned velocity = 0;
+        bool modelDecided = false;
+        std::uint64_t count = 0;
+    };
+
+    std::map<std::size_t, RecentHit> lastHitByPad;
+
+    // Process CPU share between status publications, for the system monitor.
+    struct timespec lastCpuTime{};
+    Clock::time_point lastCpuWall{};
+    double cpuPercent = 0.0;
+
+    double processCpuPercent()
+    {
+        struct timespec now{};
+        if (::clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &now) != 0)
+        {
+            return cpuPercent;
+        }
+        const auto wall = Clock::now();
+        if (lastCpuWall != Clock::time_point{})
+        {
+            const auto cpu = static_cast<double>(now.tv_sec - lastCpuTime.tv_sec)
+                             + static_cast<double>(now.tv_nsec - lastCpuTime.tv_nsec) * 1e-9;
+            const auto elapsed = std::chrono::duration<double>(wall - lastCpuWall).count();
+            if (elapsed > 0.0)
+            {
+                cpuPercent = std::clamp(100.0 * cpu / elapsed, 0.0, 100.0);
+            }
+        }
+        lastCpuTime = now;
+        lastCpuWall = wall;
+        return cpuPercent;
+    }
 
     struct HistoryEntry
     {
@@ -2344,7 +2520,8 @@ int runPadCommand(int argc, char** argv)
     {
         throw std::invalid_argument(
             "Usage: mimicd pad-command "
-            "select|config|start|stop|discard|new-session|model-load|model-reset ...");
+            "select|config|start|stop|discard|new-session|model-load|model-reset|"
+            "trigger PAD KEY VALUE|trigger-reset PAD ...");
     }
     std::ostringstream command;
     for (int index = 2; index < argc; ++index)
@@ -2356,8 +2533,8 @@ int runPadCommand(int argc, char** argv)
                             [](unsigned char character)
                             {
                                 return (character >= 'a' && character <= 'z')
-                                       || (character >= '0' && character <= '9')
-                                       || character == '-';
+                                       || (character >= '0' && character <= '9') || character == '-'
+                                       || character == '.';
                             }))
         {
             throw std::invalid_argument("Invalid pad command argument");

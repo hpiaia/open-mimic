@@ -7,6 +7,7 @@
 #include "NetworkMonitor.h"
 #include "PadCalibrationPanel.h"
 #include "SystemMonitor.h"
+#include "TriggerSettingsPanel.h"
 #include "WheelInput.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -17,9 +18,7 @@ public:
     MainComponent();
     ~MainComponent() override;
     void paint(juce::Graphics& g) override;
-    void paintOverChildren(juce::Graphics& g) override;
     void resized() override;
-    void recordTouch(const juce::MouseEvent& event);
 
 private:
     void show(const juce::String& text);
@@ -27,19 +26,6 @@ private:
     void updateHeadphoneVolume();
     void toggleHeadphoneMute();
 
-    struct TouchListener final : juce::MouseListener
-    {
-        explicit TouchListener(MainComponent& component) : owner(component) {}
-
-        void mouseDown(const juce::MouseEvent& event) override
-        {
-            owner.recordTouch(event);
-        }
-
-        MainComponent& owner;
-    };
-
-    TouchListener touchListener{*this};
     const juce::Colour accent{0xff4de2ba};
 
     struct Theme final : juce::LookAndFeel_V4
@@ -48,6 +34,18 @@ private:
         {
             return juce::Font(
                 juce::FontOptions(juce::jmin(22.0f, static_cast<float>(height) * 0.35f)));
+        }
+
+        // The touchscreen leaves the emulated pointer on the last tap, so a
+        // hover highlight would stick to that button. Only draw pressed state.
+        void drawButtonBackground(juce::Graphics& g,
+                                  juce::Button& button,
+                                  const juce::Colour& backgroundColour,
+                                  bool,
+                                  bool shouldDrawButtonAsDown) override
+        {
+            juce::LookAndFeel_V4::drawButtonBackground(
+                g, button, backgroundColour, false, shouldDrawButtonAsDown);
         }
     };
 
@@ -58,6 +56,7 @@ private:
     AuxInputPanel auxInput;
     MidiPanel midiPanel;
     PadCalibrationPanel padCalibration;
+    TriggerSettingsPanel triggerSettings;
     WheelInput wheel;
     juce::Slider headphoneVolume;
     juce::Label headphoneLevel;
@@ -71,15 +70,13 @@ private:
     juce::Label ip;
     juce::Label connection;
     juce::Label message;
-    juce::Label touchStatus;
     juce::TextButton calibrate{"Calibrate pads"};
     juce::TextButton triggers{"ADC monitor"};
+    juce::TextButton triggerSetup{"Trigger settings"};
     juce::TextButton padMidi{"Pad MIDI map"};
     juce::TextButton audio{"Audio test"};
     juce::TextButton aux{"Aux input"};
     juce::TextButton midi{"MIDI"};
     juce::Rectangle<int> networkBounds;
-    juce::Point<int> lastTouch;
-    int taps = 0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };

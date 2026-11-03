@@ -107,12 +107,47 @@ routing and sensor count. Mac-side diagnostics are in `measurements/.profiles/`;
 per-session results and the latest successful response are retained separately.
 Deleting training recordings does not implicitly erase a working module setting.
 
-The strict text format begins `OPEN_MIMIC_RESPONSE 1`, followed by pad/session,
+The strict text format begins `OPEN_MIMIC_RESPONSE 2`, followed by pad/session,
 physical route and a source-manifest hash. Two sensor rows contain noise mean,
 noise limit, threshold and baseline. Three articulation rows contain minimum,
 maximum, exponent and sample count; inactive mono articulations have zero samples.
-The daemon accepts bounded, staged files and acknowledges each transfer token in
-its status JSON. Invalid replacements cannot overwrite the last valid profile.
+Version 2 ends with one `rule` row: head ratio ceiling, rim ratio floor, rimshot
+head level, rimshot rim level and the two envelope time constants in ms, or
+`rule none` for single-zone pads. The daemon still reads version 1 profiles and
+treats them as having no measured zone rule. The daemon accepts bounded, staged
+files and acknowledges each transfer token in its status JSON. Invalid
+replacements cannot overwrite the last valid profile.
+
+## Zone rule and envelope (algorithm 3, 2026-10-28)
+
+Algorithm 3 adds the measurements the two-stage trigger policy needs
+(see [pad-calibration.md](pad-calibration.md#two-stage-trigger-policy-installed-2026-10-28)):
+
+- **Envelope time constant** per sensor: the peak follower's time to fall from a
+  strong strike's peak to `max(2 x threshold, peak / 50)`, converted to an
+  exponential constant and taken at the 75th percentile across strikes. The
+  first spike decays in about 3 ms on the owner's toms while the ringing tail
+  follows roughly 7-11 ms; fitting on the tail is what stops retriggers on it.
+- **Head ratio ceiling / rim ratio floor**: the 95th percentile of
+  rim-over-head peak ratio on evidenced head hits and the 5th percentile on
+  evidenced rim hits (head or rim sensor at least 3x its threshold). When the
+  sensors overlap (a weak rim piezo), a thin band around their geometric mean
+  is kept and `narrow_separation` is recorded.
+- **Rimshot levels**: the 99th percentile of the *other* sensor's peak during
+  single-zone hits, times 1.15, floored at twice that sensor's threshold. This
+  is the Mimic Pro procedure ("hit the head hardest, set the rim rimshot
+  threshold just above the bar") computed from the recordings. The rimshot take
+  is not needed for this rule; it only validates it.
+- **Velocity references** now exclude candidates that ride the decaying tail of
+  a previous strike or sit below the default player threshold offset (4 counts),
+  mirroring the live policy. Earlier fits took those 2-3 count tail blips as
+  the lightest "hits", which compressed the soft end of the velocity curve.
+  `tail_candidates_excluded` is reported per articulation.
+
+The receiver refits every archived session when it sees an older algorithm,
+so running `scripts/receive_pad_measurements.py` once after installing the
+daemon migrates all pads to version 2 profiles. A version 2 profile sent to an
+older daemon is rejected and the previous profile is retained.
 
 Only POD response values enter `TriggerEngine`. Profile parsing, disk I/O and
 transfer happen outside frame interpretation; the frame path performs arithmetic

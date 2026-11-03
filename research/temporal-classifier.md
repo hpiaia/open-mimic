@@ -153,7 +153,7 @@ python3 scripts/replay_pad_session.py measurements/tom1/SESSION_ID \
   --tool build/mimic-trigger-replay --output-dir NEW_REPLAY_DIRECTORY
 ```
 
-Build the native tool through CMake with JUCE/UI disabled, or use the Linux/native target build. The default replay writes features without a classifier; a LiteRT-enabled executable accepts `--model`. Input lines are `frame_index head_raw rim_raw`; a line containing only `-1` resets the engine at a discontinuity. The index is an ordering axis, not a missing-duration estimate. The companion `mimic-drum-benchmark` tool accepts a model, feature rows and an iteration count.
+Build the native tool through CMake with JUCE/UI disabled, or use the Linux/native target build. The default replay writes features without a classifier; a LiteRT-enabled executable accepts `--model`. Input lines are `frame_index head_raw rim_raw`; a line containing only `-1` resets the engine at a discontinuity. The index is an ordering axis, not a missing-duration estimate. The benchmark tool that produced the timings above was removed on 2026-10-28 (see git history); the numbers remain valid for the documented daemon.
 
 On a Mac with the command-line compiler installed, the feature-only tool can
 also be built directly without adding a native LiteRT SDK:
@@ -196,11 +196,12 @@ Matched artifacts are in `build/calibrated-temporal-comparison/` and `build/cali
 
 Goal: find what still limits the generic classifier after the matrix experiment.
 All runs below use the same 7,512 query windows and support sessions as the
-matched sensor-adaptation runs, so their folds are directly comparable. New
-options in `scripts/compare_drum_models.py`: `--calibration-adapter sensor-gain`,
-`--augmentation sensor-gain`, `--few-shot-support` and `--seed`.
-`scripts/summarize_comparison.py` checks window identity before comparing two
-runs; `scripts/seed_variance.py` reports per-fold spread across seeds.
+matched sensor-adaptation runs, so their folds are directly comparable. The
+sensor-adapter, gain-augmentation and few-shot options, and the
+`summarize_comparison.py` / `seed_variance.py` helpers, were one-off study
+tooling and were removed on 2026-10-28 after the two-stage trigger policy made
+the approach moot; the results stay recorded here and the scripts are in git
+history (`compare_drum_models.py` keeps `--seed`).
 
 ### Why Tom 4 fails zero-shot
 
@@ -288,9 +289,9 @@ Artifacts: `build/exp-*/`, `build/training-protocol-study.json`,
 Goal restated by the owner: reach near 100% on this kit with the existing
 recordings; no other kits are expected for now. The relevant protocol is the
 three whole-session folds (two sessions of every pad train, the third is held
-out), scored on sensor-evidenced windows. `scripts/within_kit_study.py` runs
-it with pad-conditioned variants the module could use because it knows the
-pad slot: a shared CNN, a three-seed ensemble, a shared CNN with a pad one-hot
+out), scored on sensor-evidenced windows. The study script
+(`within_kit_study.py`, removed 2026-10-28, in git history) ran it with
+pad-conditioned variants the module could use because it knows the pad slot: a shared CNN, a three-seed ensemble, a shared CNN with a pad one-hot
 input, a per-pad two-layer fine-tune of the shared CNN, and a per-pad CNN.
 
 Minimum gated recall over the three folds, CNN, evidenced windows:

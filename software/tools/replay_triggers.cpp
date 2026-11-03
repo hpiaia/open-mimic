@@ -19,10 +19,10 @@ int main(int argc, char** argv)
 {
     try
     {
-        if (argc != 7)
+        if (argc != 7 && argc != 8)
         {
-            throw std::invalid_argument(
-                "Usage: mimic-trigger-replay MODEL|- HEAD RIM ZONES PROFILE|- FRAMES.txt");
+            throw std::invalid_argument("Usage: mimic-trigger-replay MODEL|- HEAD RIM ZONES "
+                                        "PROFILE|- FRAMES.txt [SETTINGS|-]");
         }
         const auto number = [](const char* text)
         {
@@ -34,7 +34,10 @@ int main(int argc, char** argv)
             }
             return value;
         };
-        mimic::TriggerPad pad{number(argv[2]), number(argv[3]), number(argv[4]), {}};
+        mimic::TriggerPad pad;
+        pad.head = number(argv[2]);
+        pad.rim = number(argv[3]);
+        pad.zones = number(argv[4]);
         if (pad.head < 0 || pad.head > 31 || (pad.zones == 2 && pad.rim < 0))
         {
             throw std::invalid_argument("Replay needs an assigned primary sensor");
@@ -49,6 +52,11 @@ int main(int argc, char** argv)
                 throw std::invalid_argument("Response profile does not match replay sensors");
             }
             pad.response = calibration.response;
+        }
+        if (argc == 8 && std::string(argv[7]) != "-")
+        {
+            std::ifstream settings(argv[7]);
+            pad.settings = mimic::readTriggerSettings(settings);
         }
         mimic::TriggerEngine::Predictor predict = [](const mimic::DrumFeatures&)
         { return mimic::DrumPrediction{}; };
@@ -144,8 +152,12 @@ int main(int argc, char** argv)
                 const auto& value = engine.event(event);
                 ++emitted;
                 std::cout << "{\"kind\":\"event\",\"frame_end\":" << position
-                          << ",\"zone\":" << value.zone << ",\"velocity\":" << value.velocity
-                          << ",\"probability\":" << value.probability << "}\n";
+                          << ",\"zone\":" << value.zone << ",\"rule_zone\":" << value.ruleZone
+                          << ",\"model_decided\":" << (value.modelDecided ? "true" : "false")
+                          << ",\"velocity\":" << value.velocity
+                          << ",\"probability\":" << value.probability
+                          << ",\"head_peak\":" << value.sensorPeaks[0]
+                          << ",\"rim_peak\":" << value.sensorPeaks[1] << "}\n";
             }
         }
         if (!input.eof() || frames == 0)
@@ -155,8 +167,9 @@ int main(int argc, char** argv)
         std::cout << "{\"kind\":\"summary\",\"frames\":" << frames
                   << ",\"candidates\":" << candidates << ",\"events\":" << emitted
                   << ",\"rejected\":" << engine.rejectedCount()
-                  << ",\"clipped\":" << engine.clippedCount() << ",\"gap_resets\":" << resets
-                  << "}\n";
+                  << ",\"clipped\":" << engine.clippedCount()
+                  << ",\"model_decisions\":" << engine.modelDecisions()
+                  << ",\"gap_resets\":" << resets << "}\n";
         return 0;
     }
     catch (const std::exception& error)

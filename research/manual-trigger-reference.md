@@ -48,3 +48,9 @@ These are engineering proposals, not descriptions of Pearl's implementation.
    independent of the chosen Superior Drummer note map.
 
 No trigger, calibration, ML or MIDI-map implementation is added by this review.
+
+Update 2026-10-28: the manual's Threshold / Mask Time / Retrigger Cancel and
+Rimshot Threshold / Head-Rim Balance controls (pages 29-34) are now mirrored
+by the two-stage policy in [pad-calibration.md](pad-calibration.md#two-stage-trigger-policy-installed-2026-10-28).
+The manual documents the controls and the setup procedure, not Pearl's
+algorithm; the implementation is Open Mimic's own.

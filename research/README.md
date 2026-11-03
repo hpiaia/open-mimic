@@ -47,6 +47,12 @@ Core references for developing the new system:
   and head/rim channel observations.
 - [Module settings format](module-settings-format.md): decoded storage container
   and the 32-by-32 crosstalk settings matrix.
+- [ADC channel identification](adc-channel-identification.md): physical ADS7953
+  channel tags versus rotating DMA positions.
+- [Interface validation](mimic-interface-validation.md): touchscreen, Xorg and
+  JUCE input checks on the module.
+- [DruML Studio analysis](druml-studio-analysis.md): competitor reference
+  (reference use only; no code reuse).
 
 Some documents preserve commands and paths from the exploratory phase. Those
 old installers were removed; use the current root-level scripts for new
