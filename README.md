@@ -5,6 +5,8 @@ Pro electronic drum module. Its goal is to build a maintainable operating
 system and application for the existing hardware, with flexible pad support,
 audio processing, MIDI, connectivity, and assisted calibration.
 
+![Open Mimic home screen](docs/images/home.png)
+
 The repository brings together SD boot components, an ARM Linux system,
 hardware drivers, diagnostic tools, and the workspace for the new
 application. Hardware and firmware research lives in [research](research/).
